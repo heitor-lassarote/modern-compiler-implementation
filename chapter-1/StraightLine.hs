@@ -42,7 +42,7 @@ prog =
 maxargs :: Stm -> Int
 maxargs (CompoundStm a b) = max (maxargs a) (maxargs b)
 maxargs (AssignStm _ exp) = maxargsE exp
-maxargs (PrintStm exps) = max (length exps) (sum (maxargsE <$> exps))
+maxargs (PrintStm exps) = max (length exps) (maximum (maxargsE <$> exps))
 
 maxargsE :: Exp -> Int
 maxargsE (IdExp _) = 0
