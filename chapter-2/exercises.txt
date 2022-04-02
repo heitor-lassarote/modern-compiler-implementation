@@ -1,0 +1,484 @@
+2.1
+a. c*(ab[abc]*)?
+b. (aa|b|c)*
+c.
+ 0:       0
+ 4:     100
+ 8:    1000
+12:    1100
+16:   10000
+20:   10100
+24:   11000
+28:   11100
+32:  100000
+36:  100100
+40:  101000
+44:  101100
+48:  110000
+52:  110100
+56:  111000
+60:  111100
+64: 1000000
+Pattern: Either the number 0, or any combinations of 0s and 1s followed by two 0s.
+([01]*0)?0
+d.
+Definition: a{n} means a repeated exactly n times.
+[01]*1[01]*[01]{6}|11[01]{4}|101[01]1[01]
+e. a*(c+a*|b+a?)*
+f. 0[0-7]+|[1-9][0-9]*
+g.
+Fermat's last theorem: there are no integers n that satsify a^n+b^n=c^n such that n > 2.
+0*10?
+
+2.2
+a. For this, we would need to make a regex that can somehow keep track of the number of times each symbol appears.
+b. This would require recognizing grammars with alphabets like this:
+Suppose the alphabet is {a,b} and we want to recognize palindromes.
+S -> aSa
+S -> bSb
+S -> ϵ
+This produces a language of form {aⁿbⁿbⁿaⁿ | n > 0}, but regular languages could only recognize languages of form {aⁿaⁿ | n >= 0}. The constraints for regular languages are:
+A -> a
+A -> aB
+Where A, B are non-terminals and a are terminals. The grammar above doesn't match these constraints, and so you can't make such a regex.
+
+We'd need a regex that can somehow match the reverse of the string.
+c. We would need a regex that can enumerate all possible combinations of symbols in all possible orders they appear, and regex hasn't enough expressive power for this.
+
+2.3
+a. Binary numbers different than 0110.
+b. A string consisting of only the letter a, such that the letter appears 5n+1 times, where n >= 0.
+*c.
+Some examples:
+0000
+0110
+1101111
+100001
+10110001110
+
+The empty string, or binary numbers such that:
+* The number 1 appears either 0 or at least 2 times
+* The number 0 appears either 0 or at least 2 times
+
+?
+2.4
+a. (if|then|else)
+                 ┌─┐f ┌─┐ ε
+            ┌───►│3├─►│4├──────────────┐
+            │    └─┘  └─┘              │
+            │i                         │
+            │                          ▼
+        ε  ┌┴┐ t ┌─┐h ┌─┐e ┌─┐n ┌─┐ ε ┌─┐  ε
+    ┌─────►│2├──►│5├─►│6├─►│7├─►│8├──►│9├────┐
+    │      └─┘   └─┘  └─┘  └─┘  └─┘   └─┘    ▼
+ ε ┌┴┐                                     ┌──┐
+──►│1│                                     │14│
+   └┬┘                                     └──┘
+    │   e  ┌──┐l ┌──┐s ┌──┐e ┌──┐    ε       ▲
+    └─────►│10├─►│11├─►│12├─►│13├────────────┘
+           └──┘  └──┘  └──┘  └──┘
+
+b. a((b|a*c)x)*|x*a
+           a
+   ┌────────────────┐
+   ▼                │
+ ┌───┐            ┌─┴─┐
+ │   │     ε      │   │       c
+ │ 5 ├───────────►│ 4 ├─────────┐     ┌───┐
+ │   │            │   │         │     │   │
+ └───┘            └───┘         └────►│ 6 │
+                    ▲                 │   │
+                  ε │                 └─┬─┘
+                ┌───┘                   │
+                │                       │ε
+                │                       ▼
+              ┌─┴─┐                   ┌───┐
+              │   │         b         │   │     ε
+              │ 3 ├──────────────────►│ 7 ├───────┐    ┌───┐   ┌───┐
+              │   │                   │   │       │    │   │ x │   │    ε
+              └───┘                   └───┘       └────► 8 ├──►│ 2 ├─────────┐
+                ▲                                      │   │   │   │         │
+                │                                      └───┘   └┬──┘         ▼
+   ┌───┐        │                          ε                    │ ▲        ┌───┐
+ ε │   │        └───────────────────────────────────────────────┘ │        │   │
+──►│ 1 │                                   ε                      │        │ 12│
+   │   ├──────────────────────────────────────────────────────────┘        │   │
+   └─┬─┘                                                                   └───┘
+     │                                                                       ▲
+     │                            x                                          │
+     │                     ┌─────────────┐                                   │
+     │                     ▼             │                                   │
+     │ε                  ┌───┐         ┌─┴─┐             ┌───┐               │
+     │                   │   │    ε    │   │       a     │   │       ε       │
+     │                   │ 10├────────►│ 9 ├─────────────┤ 11├───────────────┘
+     │                   │   │         │   │             │   │
+     │                   └───┘         └───┘             └───┘
+     │                                   ▲
+     │                                   │
+     └───────────────────────────────────┘
+
+2.5
+a.
+states[0] <- {}; states[1] <- {1, 2, 3, 4}
+p <- 1; j <- 0
+E = {x, y, z}
+
+-- Iteration 0
+c <- 'x'
+e <- DFAedge states[j] c
+   = DFAedge {} 'x'
+   = {}
+trans[0, 'x'] <- 0
+--
+trans[0, 'y'] <- 0
+--
+trans[0, 'z'] <- 0
+
+j <- 1
+-- Iteration 1
+c <- 'x'
+e <- DFAedge {1, 2, 3, 4} 'x'
+   = closure {5} = {5} U {6, 7} = {5, 6, 7}
+p <- 2
+states[2] <- {5, 6, 7}
+trans[1, 'x'] <- 2
+--
+c <- 'y'
+e <- DFAedge {1, 2, 3, 4} 'y'
+   = closure {6} = {6} U {7} = {6, 7}
+p <- 3
+states[3] <- {6, 7}
+trans[1, 'y'] <- 3
+--
+c <- 'z'
+e <- DFAedge {1, 2, 3, 4} 'z'
+   = closure {} = {}
+trans[1, 'z'] <- 0
+
+j <- 2
+-- Iteration 2
+c <- 'x'
+e <- DFAedge {5, 6, 7} 'x'
+   = closure {} = {}
+trans[2, 'x'] <- 0
+--
+trans[2, 'y'] <- 0
+--
+c <- 'z'
+e <- DFAedge {5, 6, 7} 'z'
+   = closure {2} = {2} U {3} U {4} U {1} = {1, 2, 3, 4}
+trans[2, 'z'] <- 1
+
+j <- 3
+-- Iteration 3
+c <- 'x'
+e <- DFAedge {6, 7} 'x'
+   = closure {} = {}
+trans[3, 'x'] <- 0
+--
+trans[3, 'y'] <- 0
+--
+trans[3, 'y'] <- 0
+
+j <- 4
+
+┌───────────────────────────────┐ │
+│                               ▼ ▼
+│[xyz]┌───┐                   ┌───┐
+│ ┌───┤   │                 z │   │ x
+│ │   │ 0 │◄──────────────────┤ 1 ├───┐
+│ └──►│   │                   │   │   │
+│     └───┘◄───┐              └─┬─┘   │
+│     ▲ ▲      │                │     │
+│     │ │      │                │ y   │
+│     │ │      │                │     │
+│     │ │      │                │     │
+│     │ │      │                │     │
+│     │ │      │                │     │
+│     │ │      │                │     │
+│     │ │      │                │     │
+│     │ │      │                │     │
+│   x │ │ y    │                ▼     │
+│    ┌┴─┴┐     │              ┌───┐   │
+│    │┌─┐│     │         [xyz]│┌─┐│   │
+└────┤│2││     └──────────────┤│3││   │
+   z │└─┘│                    │└─┘│   │
+     └───┘                    └───┘   │
+       ▲                              │
+       └──────────────────────────────┘
+
+b.
+states[0] <- {}; states[1] <- {1}
+p <- 1; j <- 0
+
+c <- 'a'
+e <- DFAedge {} 'a' = {}
+trans[0, 'a'] <- 0
+trans[1, 'b'] <- 0
+
+j <- 1
+e <- DFAedge {1} 'a' = closure {1, 2} = {1, 2} U {} = {1, 2}
+states[p <- 2] <- {1, 2}
+trans[1, 'a'] <- 2
+e <- DFAedge {1} 'b' = closure {1} = {1} U {} = {1}
+trans[1, 'b'] <- 1
+
+j <- 2
+e <- DFAedge {1, 2} 'a' = closure ({1, 2} U {3}) = closure {1, 2, 3}
+   = {1, 2, 3} U {} = {1, 2, 3}
+states[p <- 3] <- {1, 2, 3}
+trans[2, 'a'] <- 3
+e <- DFAedge {1, 2} 'b' = {1, 3}
+states[p <- 4] <- {1, 3}
+trans[2, 'b'] <- 4
+
+j <- 3
+e <- DFAedge {1, 2, 3} 'a' = {1, 2, 3, 4}
+states[p <- 5] <- {1, 2, 3, 4}
+trans[3, 'a'] <- 5
+e <- DFAedge {1, 2, 3} 'b' = {1, 3, 4}
+states[p <- 6] <- {1, 3, 4}
+trans[3, 'b'] <- 6
+
+j <- 4
+e <- DFAedge {1, 3} 'a' = {1, 2, 4}
+states[p <- 7] <- {1, 2, 4}
+trans[4, 'a'] <- 7
+e <- DFAedge {1, 3} 'b' = {1, 4}
+states[p <- 8] <- {1, 4}
+trans[4, 'b'] <- 8
+
+j <- 5
+e <- DFAedge {1, 2, 3, 4} 'a' = {1, 2, 3, 4, 5}
+states[p <- 9] <- {1, 2, 3, 4, 5}
+trans[5, 'a'] <- 9
+e <- DFAedge {1, 2, 3, 4} 'b' = {1, 3, 4, 5}
+states[p <- 10] <- {1, 3, 4, 5}
+trans[5, 'b'] <- 10
+
+j <- 6
+e <- DFAedge {1, 3, 4} 'a' = {1, 2, 4, 5}
+states[p <- 11] <- {1, 2, 4, 5}
+trans[6, 'a'] <- 11
+e <- DFAedge {1, 3, 4} 'b' = {1, 4, 5}
+states[p <- 12] <- {1, 4, 5}
+trans[6, 'b'] <- 12
+
+j <- 7
+e <- DFAedge {1, 2, 4} 'a' = {1, 2, 5}
+states[p <- 13] <- {1, 2, 5}
+trans[7, 'a'] <- 13
+e <- DFAedge {1, 2, 4} 'b' = {1, 3, 5}
+states[p <- 14] = {1, 3, 4}
+trans[7, 'b'] <- 14
+
+j <- 8
+e <- DFAedge {1, 4} 'a' = {1, 2, 5}
+states[p <- 15] <- {1, 2, 4}
+trans[8, 'a'] <- 15
+e <- DFAedge {1, 4} 'b' = {1, 5}
+states[p <- 16] <- {1, 5}
+trans[8, 'b'] <- 16
+
+j <- 9
+e <- DFAedge {1, 2, 3, 4, 5} 'a' = {1, 2, 3, 4, 5, 6}
+states[p <- 16] <- {1, 2, 3, 4, 5, 6}
+trans[9, 'a'] <- 16
+e <- DFAedge {1, 2, 3, 4, 5} 'b' = {1, 3, 4, 5, 6}
+states[p <- 17] <- {1, 3, 4, 5, 6}
+trans[9, 'b'] <- 17
+
+j <- 10
+e <- DFAedge {1, 3, 4, 5} 'a' = {1, 2, 4, 5, 6}
+states[p <- 18] <- {1, 2, 4, 5, 6}
+trans[10, 'a'] <- 18
+e <- DFAedge {1, 3, 4, 5} 'b' = {1, 4, 5, 6}
+states[p <- 19] <- {1, 4, 5, 6}
+trans[10, 'b'] <- 19
+
+j <- 11
+e <- DFAedge {1, 2, 4, 5} 'a' = {1, 2, 3, 4, 5, 6}
+trans[11, 'a'] <- 16
+e <- DFAedge {1, 2, 4, 5} 'b' = {1, 3, 5, 6}
+states[p <- 20] <- {1, 3, 4, 5}
+trans[11, 'b'] <- 20
+
+j <- 12
+e <- DFAedge {1, 4, 5} 'a' = {1, 2, 5, 6}
+states[p <- 21] <- {1, 2, 5, 6}
+trans[12, 'a'] <- 21
+e <- DFAedge {1, 4, 5} 'b' = {1, 5, 6}
+states[p <- 22] <- {1, 5, 6}
+trans[12, 'b'] <- 22
+
+j <- 13
+e <- DFAedge {1, 2, 5} 'a' = {1, 2, 3, 6}
+states[p <- 23] <- {1, 2, 3, 6}
+trans[13, 'a'] <- 23
+e <- DFAedge {1, 2, 5} 'b' = {1, 3, 6}
+states[p <- 24] <- {1, 3, 6}
+trans[13, 'b'] <- 24
+
+j <- 14
+e <- DFAedge {1, 3, 4} 'a' = {1, 2, 4, 5}
+trans[14, 'a'] <- 11
+e <- DFAedge {1, 3, 4} 'b' = {1, 4, 5}
+trans[14, 'b'] <- 12
+
+j <- 15
+e <- DFAedge {1, 2, 4} 'a' = {1, 2, 3, 5}
+states[p <- 25] <- {1, 2, 3, 5}
+trans[15, 'a'] <- 25
+e <- DFAedge {1, 2, 4} 'b' = {1, 3, 5}
+trans[15, 'b'] <- 14
+
+j <- 16
+e <- DFAedge {1, 2, 3, 4, 5, 6} 'a' = {1, 2, 3, 4, 5, 6}
+trans[16, 'a'] <- 16  -- is it right?
+e <- DFAedge {1, 2, 3, 4, 5, 6} 'b' = {1, 3, 4, 5, 6}
+trans[16, 'b'] <- 17
+
+j <- 17
+e <- DFAedge {1, 3, 4, 5, 6} 'a' = {1, 2, 3, 4, 5, 6}
+trans[17, 'a'] <- 16
+e <- DFAedge {1, 3, 4, 5, 6} 'b' = {1, 4, 5, 6}
+trans[17, 'b'] <- 19
+
+j <- 18
+e <- DFAedge {1, 2, 4, 5, 6} 'a' = {1, 2, 3, 4, 5, 6}
+trans[18, 'a'] <- 16
+e <- DFAedge {1, 2, 4, 5, 6} 'b' = {1, 3, 4, 5, 6}
+trans[18, 'b'] <- 17
+
+j <- 19
+e <- DFAedge {1, 4, 5, 6} 'a' = {1, 2, 5, 6}
+trans[19, 'a'] <- 21
+e <- DFAedge {1, 4, 5, 6} 'b' = {1, 5, 6}
+trans[19, 'b'] <- 22
+
+j <- 20
+e <- DFAedge {1, 3, 4, 5} 'a' = {1, 2, 4, 5, 6}
+trans[20, 'a'] <- 18
+e <- DFAedge {1, 3, 4, 5} 'b' = {1, 4, 5, 6}
+trans[20, 'b'] <- 19
+
+j <- 21
+e <- DFAedge {1, 2, 5, 6} 'a' = {1, 2, 3, 6}
+trans[21, 'a'] <- 23
+e <- DFAedge {1, 2, 5, 6} 'b' = {1, 3, 6}
+trans[21, 'b'] <- 24
+
+j <- 22
+e <- DFAedge {1, 5, 6} 'a' = {1, 2, 6}
+-- AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+-- Help, I'm stuck in an automata factory!
+
+c.
+states[0] <- {}; states[1] <- {1, 5, 10, 14}
+p <- 1; j <- 0
+E = {a, c, r, s, t}
+
+trans[0] = 0
+
+j <- 1
+e <- DFAedge {1, 5, 10, 14} 'a' = {}
+trans[1, 'a'] <- 0
+e <- DFAedge {1, 5, 10, 14} 'c' = {2, 6, 11, 15}
+states[p <- 2] <- e
+trans[1, 'c'] <- 2
+trans[1, 'r'] <- 0
+trans[1, 's'] <- 0
+trans[1, 't'] <- 0
+
+j <- 2
+e <- DFAedge {2, 6, 11, 15} 'a' = {3, 7, 12, 16}
+states[p <- 3] <- e
+trans[2, 'a'] <- 3
+trans[2, 'c'] <- 0
+trans[2, 'r'] <- 0
+trans[2, 's'] <- 0
+trans[2, 't'] <- 0
+
+j <- 3
+trans[3, 'a'] = 0
+trans[3, 'c'] = 0
+e <- DFAedge {3, 7, 12, 16} 'r' = {13, 17}
+states[p <- 4] <- e
+trans[3, 'r'] <- 4
+trans[3, 's'] <- 0
+e <- DFAedge {3, 7, 12, 16} 't' = {4, 8}
+states[p <- 5] <- e
+trans[3, 't'] <- 5
+
+j <- 4
+trans[4, 'a'] <- 0
+trans[4, 'c'] <- 0
+trans[4, 'r'] <- 0
+e <- DFAedge {13, 17} 's' = {18}
+states[p <- 6] <- e
+trans[4, 's'] <- 6
+trans[4, 't'] <- 0
+
+j <- 5
+trans[5, 'a'] <- 0
+trans[5, 'c'] <- 0
+trans[5, 'r'] <- 0
+e <- DFAedge {4, 8} = {9}
+states[p <- 7] <- e
+trans[5, 's'] <- 7
+trans[5, 't'] <- 0
+
+j <- 6
+trans[6, 'a'] <- 0
+trans[6, 'c'] <- 0
+trans[6, 'r'] <- 0
+trans[6, 's'] <- 0
+trans[6, 't'] <- 0
+
+j <- 7
+trans[7, 'a'] <- 0
+trans[7, 'c'] <- 0
+trans[7, 'r'] <- 0
+trans[7, 's'] <- 0
+trans[7, 't'] <- 0
+
+┌─────┬───────┬───────┬───────┬─────┬───────────────────┬─────┬───┐
+│     │       │       │       │     │ ┌───────────────┐ │     │   │
+│     ▼       │       │       │     │ │ s             ▼ │     │   │
+│   ┌───┐   ┌─┴─┐   ┌─┴─┐   ┌─┴─┐   ├─┴─┐   ┌───┐   ┌───┤   ┌─┴─┐ │
+│   │   │   │   │ c │   │ a │   │ r │┌─┐│ t │┌─┐│ s │┌─┐│   │┌─┐│ │
+└───┤ 0 │   │ 1 ├──►│ 2 ├──►│ 3 ├──►││4│├──►││5│├─┐ ││6││   ││7││ │
+    │   │   │   │   │   │   │   │   │└─┘│   │└─┘│ │ │└─┘│   │└─┘│ │
+    └───┘   └───┘   └───┘   └─┬─┘   └───┘   └───┤ │ └───┘   └───┘ │
+              ▲               │ t             ▲ │ │           ▲   │
+              │               └───────────────┘ │ └───────────┘   │
+                                                └─────────────────┘
+
+2.6
+First iteration:
+trans[2] = trans[8]
+trans[4] = trans[6]
+
+Second iteration:
+trans[1] = trans[5]
+
+   ┌────────────────────────┐
+   │ ┌────────────┐ ┌─┐     │
+  1│ ▼           0│ ▼1│     ▼
+  ┌┴──┐   ┌───┐   ├───┤   ┌───┐
+  │   │ 0 │   │ 1 │┌─┐│ 0 │   │
+─►│ 1 ├──►│ 2 ├──►││3││◄──┤ 4 │
+  │   │   │   │   │└─┘│   │   │
+  └───┘   └─┬─┘   └───┘   └─┬─┘
+    ▲       │ 0             │
+    │       └───────┐      1│
+    │               ▼       │
+    │             ┌───┐     │
+    │           1 │   │     │
+    └─────────────┤ 7 │◄────┘
+                  │   │
+                  └┬──┘
+                   │0▲
+                   └─┘
+
+2.7 (0?(1(01*0)*1)*)*
