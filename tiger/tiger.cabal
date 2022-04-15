@@ -35,6 +35,8 @@ library
       BlockArguments
       DerivingStrategies
       ImportQualifiedPost
+      MultiWayIf
+      NamedFieldPuns
       OverloadedStrings
   ghc-options: -Weverything -Wno-all-missed-specializations -Wno-implicit-prelude -Wno-missing-import-lists -Wno-missing-safe-haskell-mode -Wno-prepositive-qualified-module -Wno-safe -Wno-unsafe
   build-tools:
@@ -56,6 +58,8 @@ executable tiger-exe
       BlockArguments
       DerivingStrategies
       ImportQualifiedPost
+      MultiWayIf
+      NamedFieldPuns
       OverloadedStrings
   ghc-options: -Weverything -Wno-all-missed-specializations -Wno-implicit-prelude -Wno-missing-import-lists -Wno-missing-safe-haskell-mode -Wno-prepositive-qualified-module -Wno-safe -Wno-unsafe -threaded -rtsopts -with-rtsopts=-N
   build-depends:
@@ -74,6 +78,8 @@ test-suite tiger-test
       BlockArguments
       DerivingStrategies
       ImportQualifiedPost
+      MultiWayIf
+      NamedFieldPuns
       OverloadedStrings
   ghc-options: -Weverything -Wno-all-missed-specializations -Wno-implicit-prelude -Wno-missing-import-lists -Wno-missing-safe-haskell-mode -Wno-prepositive-qualified-module -Wno-safe -Wno-unsafe -threaded -rtsopts -with-rtsopts=-N
   build-tool-depends:

@@ -26,6 +26,8 @@ default-extensions:
 - BlockArguments
 - DerivingStrategies
 - ImportQualifiedPost
+- MultiWayIf
+- NamedFieldPuns
 - OverloadedStrings
 
 ghc-options:

@@ -16,8 +16,6 @@ module Language.Tiger.Parser
   ) where
 
 import Data.ByteString.Lazy.Char8 (ByteString)
-import Data.ByteString.Lazy.Char8 qualified as BS
-import Data.List.NonEmpty (NonEmpty (..), (<|))
 
 import Language.Tiger.Lexer qualified as L
 }
