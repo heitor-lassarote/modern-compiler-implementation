@@ -27,14 +27,19 @@ library
   exposed-modules:
       Language.Tiger.Lexer
       Language.Tiger.Parser
+      Language.Tiger.Position
   other-modules:
       Paths_tiger
   hs-source-dirs:
       src
   default-extensions:
       BlockArguments
+      DeriveFoldable
+      DeriveFunctor
+      DeriveTraversable
       DerivingStrategies
       ImportQualifiedPost
+      LambdaCase
       MultiWayIf
       NamedFieldPuns
       OverloadedStrings
@@ -56,8 +61,12 @@ executable tiger-exe
       app
   default-extensions:
       BlockArguments
+      DeriveFoldable
+      DeriveFunctor
+      DeriveTraversable
       DerivingStrategies
       ImportQualifiedPost
+      LambdaCase
       MultiWayIf
       NamedFieldPuns
       OverloadedStrings
@@ -76,8 +85,12 @@ test-suite tiger-test
       test
   default-extensions:
       BlockArguments
+      DeriveFoldable
+      DeriveFunctor
+      DeriveTraversable
       DerivingStrategies
       ImportQualifiedPost
+      LambdaCase
       MultiWayIf
       NamedFieldPuns
       OverloadedStrings

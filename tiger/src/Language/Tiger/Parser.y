@@ -16,8 +16,13 @@ module Language.Tiger.Parser
   ) where
 
 import Data.ByteString.Lazy.Char8 (ByteString)
+import Data.List.NonEmpty qualified as NE
+import Data.Maybe (fromJust)
+import Data.Monoid (First (..))
 
+import Language.Tiger.Lexer (Token (..))
 import Language.Tiger.Lexer qualified as L
+import Language.Tiger.Position (Pos (..), Range (..), (<->))
 }
 
 %expect 0
@@ -40,52 +45,52 @@ Ambiguity:
 %tokentype { L.Token }
 %error { parseError }
 %monad { L.Alex } { >>= } { pure }
-%lexer { lexer } { L.EOF _ }
+%lexer { lexer } { Token _ L.EOF }
 
 %token
-  array     { L.Array _ }
-  break     { L.Break _ }
-  do        { L.Do _ }
-  else      { L.Else _ }
-  end       { L.End _ }
-  for       { L.For _ }
-  function  { L.Function _ }
-  id        { L.Id _ $$ }
-  if        { L.If _ }
-  in        { L.In _ }
-  int       { L.Int _ $$ }
-  let       { L.Let _ }
-  of        { L.Of _ }
-  nil       { L.Nil _ }
-  string    { L.String _ $$ }
-  then      { L.Then _ }
-  to        { L.To _ }
-  type      { L.Type _ }
-  var       { L.Var _ }
-  while     { L.While _ }
-  ':='      { L.Assign _ }
-  '='       { L.EQ _ }
-  '<>'      { L.NEQ _ }
-  '>'       { L.GT _ }
-  '<'       { L.LT _ }
-  '>='      { L.GE _ }
-  '<='      { L.LE _ }
-  '{'       { L.LBrace _ }
-  '}'       { L.RBrace _ }
-  ']'       { L.RBrack _ }
-  '['       { L.LBrack _ }
-  ')'       { L.RParen _ }
-  '('       { L.LParen _ }
-  ';'       { L.Semicolon _ }
-  ':'       { L.Colon _ }
-  ','       { L.Comma _ }
-  '/'       { L.Divide _ }
-  '*'       { L.Times _ }
-  '-'       { L.Minus _ }
-  '+'       { L.Plus _ }
-  '.'       { L.Dot _ }
-  '&'       { L.And _ }
-  '|'       { L.Or _ }
+  array     { $$@(Token _ L.Array) }
+  break     { $$@(Token _ L.Break) }
+  do        { $$@(Token _ L.Do) }
+  else      { $$@(Token _ L.Else) }
+  end       { $$@(Token _ L.End) }
+  for       { $$@(Token _ L.For) }
+  function  { $$@(Token _ L.Function) }
+  id        { $$@(Token _ (L.Id _)) }
+  if        { $$@(Token _ L.If) }
+  in        { $$@(Token _ L.In) }
+  int       { $$@(Token _ (L.Int _)) }
+  let       { $$@(Token _ L.Let) }
+  of        { $$@(Token _ L.Of) }
+  nil       { $$@(Token _ L.Nil) }
+  string    { $$@(Token _ (L.String _)) }
+  then      { $$@(Token _ L.Then) }
+  to        { $$@(Token _ L.To) }
+  type      { $$@(Token _ L.Type) }
+  var       { $$@(Token _ L.Var) }
+  while     { $$@(Token _ L.While) }
+  ':='      { $$@(Token _ L.Assign) }
+  '='       { $$@(Token _ L.EQ) }
+  '<>'      { $$@(Token _ L.NEQ) }
+  '>'       { $$@(Token _ L.GT) }
+  '<'       { $$@(Token _ L.LT) }
+  '>='      { $$@(Token _ L.GE) }
+  '<='      { $$@(Token _ L.LE) }
+  '{'       { $$@(Token _ L.LBrace) }
+  '}'       { $$@(Token _ L.RBrace) }
+  ']'       { $$@(Token _ L.RBrack) }
+  '['       { $$@(Token _ L.LBrack) }
+  ')'       { $$@(Token _ L.RParen) }
+  '('       { $$@(Token _ L.LParen) }
+  ';'       { $$@(Token _ L.Semicolon) }
+  ':'       { $$@(Token _ L.Colon) }
+  ','       { $$@(Token _ L.Comma) }
+  '/'       { $$@(Token _ L.Divide) }
+  '*'       { $$@(Token _ L.Times) }
+  '-'       { $$@(Token _ L.Minus) }
+  '+'       { $$@(Token _ L.Plus) }
+  '.'       { $$@(Token _ L.Dot) }
+  '&'       { $$@(Token _ L.And) }
+  '|'       { $$@(Token _ L.Or) }
 
 %right in
 %left '|'
@@ -99,127 +104,127 @@ Ambiguity:
 
 -- Declarations
 
-Decs :: { [Dec] }
+Decs :: { [Dec Range] }
   :          { [] }
   | Dec Decs { $1 : $2 }
 
-Dec :: { Dec }
+Dec :: { Dec Range }
   : TyDec  { $1 }
   | VarDec { $1 }
   | FunDec { $1 }
 
 -- Types
 
-TypeId :: { TypeId }
-  : id { TypeId $1 }
+TypeId :: { TypeId Range }
+  : id { TypeId (range $1) (getId $1) }
 
-TyDec :: { Dec }
-  : type TypeId '=' Ty { TyDec $2 $4 }
+TyDec :: { Dec Range }
+  : type TypeId '=' Ty { TyDec (range $1 <-> getMeta $4) $2 $4 }
 
-Ty :: { Ty }
-  : TypeId             { TyId $1 }
-  | '{' TypeFields '}' { TyFields $2 }
-  | array of TypeId    { TyArray $3 }
+Ty :: { Ty Range }
+  : TypeId             { TyId (getMeta $1) $1 }
+  | '{' TypeFields '}' { TyFields (range $1 <-> range $3) $2 }
+  | array of TypeId    { TyArray (range $1 <-> getMeta $3) $3 }
 
-TypeFields :: { [TypeField] }
+TypeFields :: { [TypeField Range] }
   :                          { [] }
   | TypeField                { [$1] }
   | TypeField ',' TypeFields { $1 : $3 }
 
-TypeField :: { TypeField }
-  : Id ':' TypeId { TypeField $1 $3 }
+TypeField :: { TypeField Range }
+  : Id ':' TypeId { TypeField (getMeta $1 <-> getMeta $3) $1 $3 }
 
 -- Variables
 
-Id :: { Id }
-  : id { Id $1 }
+Id :: { Id Range }
+  : id { Id (range $1) (getId $1) }
 
-VarDec :: { Dec }
-  : var Id ':=' Exp { VarDec $2 $4 }
+VarDec :: { Dec Range }
+  : var Id ':=' Exp { VarDec (range $1 <-> getMeta $4) $2 $4 }
 
 -- Functions
 
-FunDec :: { Dec }
-  : function Id '(' TypeFields ')'            '=' Exp { FunDec $2 $4 Nothing   $7 }
-  | function Id '(' TypeFields ')' ':' TypeId '=' Exp { FunDec $2 $4 (Just $7) $9 }
+FunDec :: { Dec Range }
+  : function Id '(' TypeFields ')'            '=' Exp { FunDec (range $1 <-> getMeta $7) $2 $4 Nothing   $7 }
+  | function Id '(' TypeFields ')' ':' TypeId '=' Exp { FunDec (range $1 <-> getMeta $9) $2 $4 (Just $7) $9 }
 
 -- Expressions
 
-Exp :: { Exp }
-  : Atom '/'  Exp { EDivide $1 $3 }
-  | Atom '*'  Exp { ETimes $1 $3 }
-  | Atom '-'  Exp { EMinus $1 $3 }
-  | Atom '+'  Exp { EPlus $1 $3 }
-  | Atom '='  Exp { EEq $1 $3 }
-  | Atom '<>' Exp { ENeq $1 $3 }
-  | Atom '>'  Exp { EGt $1 $3 }
-  | Atom '<'  Exp { ELt $1 $3 }
-  | Atom '>=' Exp { EGe $1 $3 }
-  | Atom '<=' Exp { ELe $1 $3 }
-  | Atom '&'  Exp { EConj $1 $3 }
-  | Atom '|'  Exp { EDisj $1 $3 }
+Exp :: { Exp Range }
+  : Atom '/'  Exp { EDivide (getMeta $1 <-> getMeta $3) $1 $3 }
+  | Atom '*'  Exp { ETimes (getMeta $1 <-> getMeta $3) $1 $3 }
+  | Atom '-'  Exp { EMinus (getMeta $1 <-> getMeta $3) $1 $3 }
+  | Atom '+'  Exp { EPlus (getMeta $1 <-> getMeta $3) $1 $3 }
+  | Atom '='  Exp { EEq (getMeta $1 <-> getMeta $3) $1 $3 }
+  | Atom '<>' Exp { ENeq (getMeta $1 <-> getMeta $3) $1 $3 }
+  | Atom '>'  Exp { EGt (getMeta $1 <-> getMeta $3) $1 $3 }
+  | Atom '<'  Exp { ELt (getMeta $1 <-> getMeta $3) $1 $3 }
+  | Atom '>=' Exp { EGe (getMeta $1 <-> getMeta $3) $1 $3 }
+  | Atom '<=' Exp { ELe (getMeta $1 <-> getMeta $3) $1 $3 }
+  | Atom '&'  Exp { EConj (getMeta $1 <-> getMeta $3) $1 $3 }
+  | Atom '|'  Exp { EDisj (getMeta $1 <-> getMeta $3) $1 $3 }
   | ExpNeg        { $1 }
 
-ExpNeg :: { Exp }
+ExpNeg :: { Exp Range }
 ExpNeg
-  : '-' Exp0 %prec NEG { ENeg $2 }
+  : '-' Exp0 %prec NEG { ENeg (range $1 <-> getMeta $2) $2 }
   | Exp0               { $1 }
 
-Exp0 :: { Exp }
+Exp0 :: { Exp Range }
   -- FIXME: We use `id` here and in LValue to avoid a reduce/reduce conflict.
-  : id '[' Exp ']' of Exp         { EArray (TypeId $1) $3 $6 }
-  | LValue ':=' Exp               { EAssign $1 $3 }
-  | if Exp then Exp else Exp      { EIfThenElse $2 $4 $6 }
-  | if Exp then Exp %shift        { EIfThen $2 $4 }
-  | while Exp do Exp              { EWhile $2 $4 }
-  | for Id ':=' Exp to Exp do Exp { EFor $2 $4 $6 $8 }
+  : id '[' Exp ']' of Exp         { EArray (range $1 <-> getMeta $6) (TypeId (range $1) (getId $1)) $3 $6 }
+  | LValue ':=' Exp               { EAssign (getMeta $1 <-> getMeta $3) $1 $3 }
+  | if Exp then Exp else Exp      { EIfThenElse (range $1 <-> getMeta $6) $2 $4 $6 }
+  | if Exp then Exp %shift        { EIfThen (range $1 <-> getMeta $4) $2 $4 }
+  | while Exp do Exp              { EWhile (range $1 <-> getMeta $4) $2 $4 }
+  | for Id ':=' Exp to Exp do Exp { EFor (range $1 <-> getMeta $8) $2 $4 $6 $8 }
   | Atom                          { $1 }
 
-Atom :: { Exp }
-  : LValue                   { ELValue $1 }
-  | nil                      { ENil }
-  | Id '(' Args ')'          { ECall $1 $3 }
-  | TypeId '{' RecFields '}' { ERecord $1 $3 }
-  | '(' Seq ')'              { ESeq $2 }
-  | Lit                      { ELit $1 }
-  | break                    { EBreak }
-  | let Decs in ExpSeq end   { ELet $2 $4 }
-  | '(' ')'                  { EUnit }
-  | '(' Exp ')'              { EPar $2 }
+Atom :: { Exp Range }
+  : LValue                   { ELValue (getMeta $1) $1 }
+  | nil                      { ENil (range $1) }
+  | Id '(' Args ')'          { ECall (getMeta $1 <-> range $4) $1 $3 }
+  | TypeId '{' RecFields '}' { ERecord (getMeta $1 <-> range $4) $1 $3 }
+  | '(' Seq ')'              { ESeq (range $1 <-> range $3) $2 }
+  | Lit                      { ELit (getMeta $1) $1 }
+  | break                    { EBreak (range $1) }
+  | let Decs in ExpSeq end   { ELet (range $1 <-> range $5) $2 $4 }
+  | '(' ')'                  { EUnit (range $1 <-> range $2) }
+  | '(' Exp ')'              { EPar (range $1 <-> range $3) $2 }
 
-LValue :: { LValue }
-  : id AccessorChain { LValue (Id $1) $2 }
+LValue :: { LValue Range }
+  : id AccessorChain { LValue (range $1 <-> getListMeta (range $1) $2) (Id (range $1) (getId $1)) $2 }
 
-AccessorChain :: { [Accessor] }
+AccessorChain :: { [Accessor Range] }
   :                        { [] }
   | Accessor AccessorChain { $1 : $2 }
 
-Accessor :: { Accessor }
-  : '.' Id      { AccessorRecField $2 }
-  | '[' Exp ']' { AccessorArraySub $2 }
+Accessor :: { Accessor Range }
+  : '.' Id      { AccessorRecField (range $1 <-> getMeta $2) $2 }
+  | '[' Exp ']' { AccessorArraySub (range $1 <-> range $3) $2 }
 
-Args :: { [Exp] }
+Args :: { [Exp Range] }
   :              { [] }
   | Exp          { [$1] }
   | Exp ',' Args { $1 : $3 }
 
-RecFields :: { [RecField] }
+RecFields :: { [RecField Range] }
   :                        { [] }
   | RecField               { [$1] }
   | RecField ',' RecFields { $1 : $3 }
 
-RecField :: { RecField }
-  : Id '=' Exp { RecField $1 $3 }
+RecField :: { RecField Range }
+  : Id '=' Exp { RecField (getMeta $1 <-> getMeta $3) $1 $3 }
 
-Seq :: { Seq }
-  : Exp ';' Seq { SeqSpine $1 $3 }
-  | Exp ';' Exp { SeqNil $1 $3 }
+Seq :: { Seq Range }
+  : Exp ';' Seq { SeqSpine (getMeta $1 <-> getMeta $3) $1 $3 }
+  | Exp ';' Exp { SeqNil (getMeta $1 <-> getMeta $3) $1 $3 }
 
-Lit :: { Lit }
-  : int    { LInt $1 }
-  | string { LString $1 }
+Lit :: { Lit Range }
+  : int    { LInt (range $1) (getInt $1) }
+  | string { LString (range $1) (getString $1) }
 
-ExpSeq :: { [Exp] }
+ExpSeq :: { [Exp Range] }
   :                { [] }
   | Exp            { [$1] }
   | Exp ';' ExpSeq { $1 : $3 }
@@ -233,82 +238,97 @@ parseError _ = do
 lexer :: (L.Token -> L.Alex a) -> L.Alex a
 lexer = (=<< L.alexMonadScan)
 
-newtype Id
-  = Id ByteString
-  deriving stock (Eq, Show)
+getId :: Token -> ByteString
+getId (Token _ (L.Id i)) = i
 
-newtype TypeId
-  = TypeId ByteString
-  deriving stock (Eq, Show)
+getInt :: Token -> Integer
+getInt (Token _ (L.Int i)) = i
 
-data Dec
-  = TyDec  TypeId Ty
-  | VarDec Id Exp
-  | FunDec Id [TypeField] (Maybe TypeId) Exp
-  deriving stock (Eq, Show)
+getString :: Token -> ByteString
+getString (Token _ (L.String s)) = s
 
-data Ty
-  = TyId TypeId
-  | TyFields [TypeField]
-  | TyArray TypeId
-  deriving stock (Eq, Show)
+getMeta :: Foldable f => f a -> a
+getMeta = fromJust . getFirst . foldMap pure
 
-data TypeField
-  = TypeField Id TypeId
-  deriving stock (Eq, Show)
+getListMeta :: Foldable f => a -> [f a] -> a
+getListMeta fallback = maybe fallback (getMeta . NE.last) . NE.nonEmpty
 
-data Exp
-  = ELValue LValue
-  | ENil
-  | ESeq Seq
-  | EUnit
-  | ELit Lit
-  | ENeg Exp
-  | ECall Id [Exp]
-  | EDivide Exp Exp
-  | ETimes Exp Exp
-  | EMinus Exp Exp
-  | EPlus Exp Exp
-  | EEq Exp Exp
-  | ENeq Exp Exp
-  | ELt Exp Exp
-  | EGt Exp Exp
-  | EGe Exp Exp
-  | ELe Exp Exp
-  | EConj Exp Exp
-  | EDisj Exp Exp
-  | ERecord TypeId [RecField]
-  | EArray TypeId Exp Exp
-  | EAssign LValue Exp
-  | EIfThenElse Exp Exp Exp
-  | EIfThen Exp Exp
-  | EWhile Exp Exp
-  | EFor Id Exp Exp Exp
-  | EBreak
-  | ELet [Dec] [Exp]
-  | EPar Exp
-  deriving stock (Eq, Show)
+data Id a
+  = Id a ByteString
+  deriving stock (Eq, Foldable, Functor, Show, Traversable)
 
-data LValue
-  = LValue Id [Accessor]
-  deriving stock (Eq, Show)
+data TypeId a
+  = TypeId a ByteString
+  deriving stock (Eq, Foldable, Functor, Show, Traversable)
 
-data Accessor
-  = AccessorRecField Id
-  | AccessorArraySub Exp
-  deriving stock (Eq, Show)
+data Dec a
+  = TyDec a (TypeId a) (Ty a)
+  | VarDec a (Id a) (Exp a)
+  | FunDec a (Id a) [TypeField a] (Maybe (TypeId a)) (Exp a)
+  deriving stock (Eq, Foldable, Functor, Show, Traversable)
 
-data Seq
-  = SeqSpine Exp Seq
-  | SeqNil Exp Exp
-  deriving stock (Eq, Show)
+data Ty a
+  = TyId a (TypeId a)
+  | TyFields a [TypeField a]
+  | TyArray a (TypeId a)
+  deriving stock (Eq, Foldable, Functor, Show, Traversable)
 
-data Lit
-  = LInt Integer
-  | LString ByteString
-  deriving stock (Eq, Show)
+data TypeField a
+  = TypeField a (Id a) (TypeId a)
+  deriving stock (Eq, Foldable, Functor, Show, Traversable)
 
-data RecField
-  = RecField Id Exp
-  deriving stock (Eq, Show)
+data Exp a
+  = ELValue a (LValue a)
+  | ENil a
+  | ESeq a (Seq a)
+  | EUnit a
+  | ELit a (Lit a)
+  | ENeg a (Exp a)
+  | ECall a (Id a) [Exp a]
+  | EDivide a (Exp a) (Exp a)
+  | ETimes a (Exp a) (Exp a)
+  | EMinus a (Exp a) (Exp a)
+  | EPlus a (Exp a) (Exp a)
+  | EEq a (Exp a) (Exp a)
+  | ENeq a (Exp a) (Exp a)
+  | ELt a (Exp a) (Exp a)
+  | EGt a (Exp a) (Exp a)
+  | EGe a (Exp a) (Exp a)
+  | ELe a (Exp a) (Exp a)
+  | EConj a (Exp a) (Exp a)
+  | EDisj a (Exp a) (Exp a)
+  | ERecord a (TypeId a) [RecField a]
+  | EArray a (TypeId a) (Exp a) (Exp a)
+  | EAssign a (LValue a) (Exp a)
+  | EIfThenElse a (Exp a) (Exp a) (Exp a)
+  | EIfThen a (Exp a) (Exp a)
+  | EWhile a (Exp a) (Exp a)
+  | EFor a (Id a) (Exp a) (Exp a) (Exp a)
+  | EBreak a
+  | ELet a [Dec a] [Exp a]
+  | EPar a (Exp a)
+  deriving stock (Eq, Foldable, Functor, Show, Traversable)
+
+data LValue a
+  = LValue a (Id a) [Accessor a]
+  deriving stock (Eq, Foldable, Functor, Show, Traversable)
+
+data Accessor a
+  = AccessorRecField a (Id a)
+  | AccessorArraySub a (Exp a)
+  deriving stock (Eq, Foldable, Functor, Show, Traversable)
+
+data Seq a
+  = SeqSpine a (Exp a) (Seq a)
+  | SeqNil a (Exp a) (Exp a)
+  deriving stock (Eq, Foldable, Functor, Show, Traversable)
+
+data Lit a
+  = LInt a Integer
+  | LString a ByteString
+  deriving stock (Eq, Foldable, Functor, Show, Traversable)
+
+data RecField a
+  = RecField a (Id a) (Exp a)
+  deriving stock (Eq, Foldable, Functor, Show, Traversable)
 }

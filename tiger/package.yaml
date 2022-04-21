@@ -24,8 +24,12 @@ dependencies:
 
 default-extensions:
 - BlockArguments
+- DeriveFoldable
+- DeriveFunctor
+- DeriveTraversable
 - DerivingStrategies
 - ImportQualifiedPost
+- LambdaCase
 - MultiWayIf
 - NamedFieldPuns
 - OverloadedStrings

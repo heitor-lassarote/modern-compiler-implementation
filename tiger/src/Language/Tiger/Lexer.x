@@ -9,7 +9,7 @@
   -funbox-strict-fields
 #-}
 module Language.Tiger.Lexer
-  ( Token (..)
+  ( Token (..), TokenType (..)
   , Alex, AlexPosn (..)
   , alexError
   , alexGetInput
@@ -24,6 +24,9 @@ import Data.ByteString.Lazy.Char8 (ByteString)
 import Data.ByteString.Lazy.Char8 qualified as BS
 import Data.Char (chr, ord)
 import Data.Ix (inRange)
+import Data.Maybe (fromJust)
+
+import Language.Tiger.Position (Pos (..), Range (..))
 }
 
 %wrapper "monadUserState-bytestring"
@@ -77,8 +80,8 @@ tokens :-
 <0> ";"      { tok Semicolon }
 <0> ":"      { tok Colon }
 <0> ","      { tok Comma }
-<0> $digit+  { \(p, _, s, _) len -> pure $ Int p $ read $ BS.unpack $ BS.take len s }
-<0> @id      { \(p, _, s, _) len -> pure $ Id p $ BS.take len s }
+<0> $digit+  { tokDigit }
+<0> @id      { tokId }
 
 <0> "/*"       { nestComment `andBegin` comment }
 <comment> "/*" { nestComment }
@@ -87,7 +90,7 @@ tokens :-
 <comment> \n   ;
 
 <0> \"               { enterString `andBegin` string }
-<string> \"          { exitString }
+<string> \"          { exitString `andBegin` 0 }
 <string> \\n         { emit '\n' }
 <string> \\t         { emit '\t' }
 <string> \\\^.       { emitControl }
@@ -101,14 +104,14 @@ tokens :-
 data AlexUserState = AlexUserState
   { lexerCommentDepth :: Int
   , lexerCurrentString :: String
-  , lexerInString :: Bool
+  , lexerStringStart :: Maybe Pos
   }
 
 alexInitUserState :: AlexUserState
 alexInitUserState = AlexUserState
   { lexerCommentDepth = 0
   , lexerCurrentString = ""
-  , lexerInString = False
+  , lexerStringStart = Nothing
   }
 
 get :: Alex AlexUserState
@@ -195,75 +198,102 @@ emitCurrent inp@(_, _, str, _) len
   | otherwise = panic inp len
 
 enterString :: AlexAction Token
-enterString _ _ = do
-  modify \s -> s{lexerInString = True}
+enterString (p, _, _, _) _ = do
+  modify \s -> s{lexerStringStart = Just $ mkPos p}
   alexMonadScan
 
 exitString :: AlexAction Token
-exitString (p, _, _, _) _ = do
+exitString (AlexPn offset line column, _, _, _) _ = do
   s <- get
   let str = lexerCurrentString s
-  put s{lexerCurrentString = "", lexerInString = False}
-  alexSetStartCode 0
-  pure $ String p $ BS.pack $ reverse str
+  let start = fromJust $ lexerStringStart s
+  put s{lexerCurrentString = "", lexerStringStart = Nothing}
+  pure $ Token (Range start end) $ String $ BS.pack $ reverse str
+  where
+    -- XXX: Not sure why, but I had to add one here so the ranges are correct.
+    end = Pos
+      { line
+      , column = column + 1
+      , offset = offset + 1
+      }
 
-tok :: (AlexPosn -> token) -> AlexAction token
-tok ctor (p, _, _, _) _ = pure $ ctor p
+tok :: TokenType -> AlexAction Token
+tok ctor inp len = pure $ Token (mkRange inp len) ctor
 
-data Token
-  = Type AlexPosn
-  | Var AlexPosn
-  | Function AlexPosn
-  | Break AlexPosn
-  | Of AlexPosn
-  | End AlexPosn
-  | In AlexPosn
-  | Nil AlexPosn
-  | Let AlexPosn
-  | Do AlexPosn
-  | To AlexPosn
-  | For AlexPosn
-  | While AlexPosn
-  | Else AlexPosn
-  | Then AlexPosn
-  | If AlexPosn
-  | Array AlexPosn
-  | Assign AlexPosn
-  | Or AlexPosn
-  | And AlexPosn
-  | GE AlexPosn
-  | GT AlexPosn
-  | LE AlexPosn
-  | LT AlexPosn
-  | NEQ AlexPosn
-  | EQ AlexPosn
-  | Divide AlexPosn
-  | Times AlexPosn
-  | Minus AlexPosn
-  | Plus AlexPosn
-  | Dot AlexPosn
-  | RBrace AlexPosn
-  | LBrace AlexPosn
-  | RBrack AlexPosn
-  | LBrack AlexPosn
-  | RParen AlexPosn
-  | LParen AlexPosn
-  | Semicolon AlexPosn
-  | Colon AlexPosn
-  | Comma AlexPosn
-  | String AlexPosn ByteString
-  | Int AlexPosn Integer
-  | Id AlexPosn ByteString
-  | EOF AlexPosn
+tokDigit, tokId :: AlexAction Token
+tokDigit inp@(_, _, s, _) len =
+  pure $ Token (mkRange inp len) $ Int $ read $ BS.unpack $ BS.take len s
+tokId inp@(_, _, s, _) len =
+  pure $ Token (mkRange inp len) $ Id $ BS.copy $ BS.take len s
+
+mkPos :: AlexPosn -> Pos
+mkPos (AlexPn offset line column) = Pos line column offset
+
+mkRange :: AlexInput -> Int64 -> Range
+mkRange (start, _, str, _) len = Range{start = mkPos start, end = mkPos end}
+  where
+    end = BS.foldl' alexMove start $ BS.take len str
+
+data Token = Token
+  { range :: Range
+  , tokenType :: TokenType
+  } deriving stock (Eq, Show)
+
+data TokenType
+  = Type
+  | Var
+  | Function
+  | Break
+  | Of
+  | End
+  | In
+  | Nil
+  | Let
+  | Do
+  | To
+  | For
+  | While
+  | Else
+  | Then
+  | If
+  | Array
+  | Assign
+  | Or
+  | And
+  | GE
+  | GT
+  | LE
+  | LT
+  | NEQ
+  | EQ
+  | Divide
+  | Times
+  | Minus
+  | Plus
+  | Dot
+  | RBrace
+  | LBrace
+  | RBrack
+  | LBrack
+  | RParen
+  | LParen
+  | Semicolon
+  | Colon
+  | Comma
+  | String ByteString
+  | Int Integer
+  | Id ByteString
+  | EOF
   deriving stock (Eq, Show)
 
 alexEOF :: Alex Token
 alexEOF = do
   s <- get
   if
-    | lexerInString s -> alexError "Unclosed string at end of file."
+    | Just _ <- lexerStringStart s -> alexError "Unclosed string at end of file."
     | lexerCommentDepth s > 0 -> alexError "Unclosed comment at end of file."
     | otherwise -> do
-      (pos, _, _, _) <- alexGetInput
-      pure $ EOF pos
+      (AlexPn offset line column, _, _, _) <- alexGetInput
+      let pos = Pos line column offset
+      pure $ Token (Range pos pos) EOF
 }
