@@ -12,7 +12,7 @@ module Language.Tiger.Parser
   , Ty (..), TypeField (..)
 
   -- * Expresions
-  , Exp (..), LValue (..), Seq (..), Lit (..), RecField (..)
+  , BinOp (..), Exp (..), LValue (..), Seq (..), Lit (..), RecField (..)
   ) where
 
 import Data.ByteString.Lazy.Char8 (ByteString)
@@ -102,11 +102,25 @@ Ambiguity:
 
 %%
 
+-- Utilities
+
+sepBy(p, sep)
+  :                     { [] }
+  | p                   { [$1] }
+  | p sep sepBy(p, sep) { $1 : $3 }
+
+many(p)
+  :           { [] }
+  | p many(p) { $1 : $2 }
+
+optional(p)
+  :   { Nothing }
+  | p { Just $1 }
+
 -- Declarations
 
 Decs :: { [Dec Range] }
-  :          { [] }
-  | Dec Decs { $1 : $2 }
+  : many(Dec) { $1 }
 
 Dec :: { Dec Range }
   : TyDec  { $1 }
@@ -114,6 +128,9 @@ Dec :: { Dec Range }
   | FunDec { $1 }
 
 -- Types
+
+TypeAnnotation :: { TypeId Range }
+  : ':' TypeId { $2 }
 
 TypeId :: { TypeId Range }
   : id { TypeId (range $1) (getId $1) }
@@ -127,12 +144,10 @@ Ty :: { Ty Range }
   | array of TypeId    { TyArray (range $1 <-> getMeta $3) $3 }
 
 TypeFields :: { [TypeField Range] }
-  :                          { [] }
-  | TypeField                { [$1] }
-  | TypeField ',' TypeFields { $1 : $3 }
+  : sepBy(TypeField, ',') { $1 }
 
 TypeField :: { TypeField Range }
-  : Id ':' TypeId { TypeField (getMeta $1 <-> getMeta $3) $1 $3 }
+  : Id TypeAnnotation { TypeField (getMeta $1 <-> getMeta $2) $1 $2 }
 
 -- Variables
 
@@ -145,25 +160,27 @@ VarDec :: { Dec Range }
 -- Functions
 
 FunDec :: { Dec Range }
-  : function Id '(' TypeFields ')'            '=' Exp { FunDec (range $1 <-> getMeta $7) $2 $4 Nothing   $7 }
-  | function Id '(' TypeFields ')' ':' TypeId '=' Exp { FunDec (range $1 <-> getMeta $9) $2 $4 (Just $7) $9 }
+  : function Id '(' TypeFields ')' optional(TypeAnnotation) '=' Exp { FunDec (range $1 <-> getMeta $8) $2 $4 $6 $8 }
 
 -- Expressions
 
+BinOp :: { BinOp Range }
+  : '/'  { Divide (range $1) }
+  | '*'  { Times  (range $1) }
+  | '-'  { Minus  (range $1) }
+  | '+'  { Plus   (range $1) }
+  | '='  { Eq     (range $1) }
+  | '<>' { Neq    (range $1) }
+  | '>'  { Gt     (range $1) }
+  | '<'  { Lt     (range $1) }
+  | '>=' { Ge     (range $1) }
+  | '<=' { Le     (range $1) }
+  | '&'  { Conj   (range $1) }
+  | '|'  { Disj   (range $1) }
+
 Exp :: { Exp Range }
-  : Atom '/'  Exp { EDivide (getMeta $1 <-> getMeta $3) $1 $3 }
-  | Atom '*'  Exp { ETimes (getMeta $1 <-> getMeta $3) $1 $3 }
-  | Atom '-'  Exp { EMinus (getMeta $1 <-> getMeta $3) $1 $3 }
-  | Atom '+'  Exp { EPlus (getMeta $1 <-> getMeta $3) $1 $3 }
-  | Atom '='  Exp { EEq (getMeta $1 <-> getMeta $3) $1 $3 }
-  | Atom '<>' Exp { ENeq (getMeta $1 <-> getMeta $3) $1 $3 }
-  | Atom '>'  Exp { EGt (getMeta $1 <-> getMeta $3) $1 $3 }
-  | Atom '<'  Exp { ELt (getMeta $1 <-> getMeta $3) $1 $3 }
-  | Atom '>=' Exp { EGe (getMeta $1 <-> getMeta $3) $1 $3 }
-  | Atom '<=' Exp { ELe (getMeta $1 <-> getMeta $3) $1 $3 }
-  | Atom '&'  Exp { EConj (getMeta $1 <-> getMeta $3) $1 $3 }
-  | Atom '|'  Exp { EDisj (getMeta $1 <-> getMeta $3) $1 $3 }
-  | ExpNeg        { $1 }
+  : Atom BinOp Exp { EBinOp (getMeta $1 <-> getMeta $3) $2 $1 $3 }
+  | ExpNeg         { $1 }
 
 ExpNeg :: { Exp Range }
 ExpNeg
@@ -196,22 +213,17 @@ LValue :: { LValue Range }
   : id AccessorChain { LValue (range $1 <-> getListMeta (range $1) $2) (Id (range $1) (getId $1)) $2 }
 
 AccessorChain :: { [Accessor Range] }
-  :                        { [] }
-  | Accessor AccessorChain { $1 : $2 }
+  : many(Accessor) { $1 }
 
 Accessor :: { Accessor Range }
   : '.' Id      { AccessorRecField (range $1 <-> getMeta $2) $2 }
   | '[' Exp ']' { AccessorArraySub (range $1 <-> range $3) $2 }
 
 Args :: { [Exp Range] }
-  :              { [] }
-  | Exp          { [$1] }
-  | Exp ',' Args { $1 : $3 }
+  : sepBy(Exp, ',') { $1 }
 
 RecFields :: { [RecField Range] }
-  :                        { [] }
-  | RecField               { [$1] }
-  | RecField ',' RecFields { $1 : $3 }
+  : sepBy(RecField, ',') { $1 }
 
 RecField :: { RecField Range }
   : Id '=' Exp { RecField (getMeta $1 <-> getMeta $3) $1 $3 }
@@ -225,9 +237,7 @@ Lit :: { Lit Range }
   | string { LString (range $1) (getString $1) }
 
 ExpSeq :: { [Exp Range] }
-  :                { [] }
-  | Exp            { [$1] }
-  | Exp ';' ExpSeq { $1 : $3 }
+  : sepBy(Exp, ';') { $1 }
 
 {
 parseError :: L.Token -> L.Alex a
@@ -277,6 +287,21 @@ data TypeField a
   = TypeField a (Id a) (TypeId a)
   deriving stock (Eq, Foldable, Functor, Show, Traversable)
 
+data BinOp a
+  = Divide a
+  | Times a
+  | Minus a
+  | Plus a
+  | Eq a
+  | Neq a
+  | Lt a
+  | Gt a
+  | Ge a
+  | Le a
+  | Conj a
+  | Disj a
+  deriving stock (Eq, Foldable, Functor, Show, Traversable)
+
 data Exp a
   = ELValue a (LValue a)
   | ENil a
@@ -285,18 +310,7 @@ data Exp a
   | ELit a (Lit a)
   | ENeg a (Exp a)
   | ECall a (Id a) [Exp a]
-  | EDivide a (Exp a) (Exp a)
-  | ETimes a (Exp a) (Exp a)
-  | EMinus a (Exp a) (Exp a)
-  | EPlus a (Exp a) (Exp a)
-  | EEq a (Exp a) (Exp a)
-  | ENeq a (Exp a) (Exp a)
-  | ELt a (Exp a) (Exp a)
-  | EGt a (Exp a) (Exp a)
-  | EGe a (Exp a) (Exp a)
-  | ELe a (Exp a) (Exp a)
-  | EConj a (Exp a) (Exp a)
-  | EDisj a (Exp a) (Exp a)
+  | EBinOp a (BinOp a) (Exp a) (Exp a)
   | ERecord a (TypeId a) [RecField a]
   | EArray a (TypeId a) (Exp a) (Exp a)
   | EAssign a (LValue a) (Exp a)
