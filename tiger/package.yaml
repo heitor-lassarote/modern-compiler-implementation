@@ -49,6 +49,7 @@ library:
   dependencies:
   - array
   - bytestring
+  - vector
   build-tools:
   - alex
   - happy

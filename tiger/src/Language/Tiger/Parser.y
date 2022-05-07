@@ -15,10 +15,12 @@ module Language.Tiger.Parser
   , BinOp (..), Exp (..), LValue (..), Seq (..), Lit (..), RecField (..)
   ) where
 
+import Data.Bool (bool)
 import Data.ByteString.Lazy.Char8 (ByteString)
-import Data.List.NonEmpty qualified as NE
 import Data.Maybe (fromJust)
 import Data.Monoid (First (..))
+import Data.Vector (Vector)
+import Data.Vector qualified as V
 
 import Language.Tiger.Lexer (Token (..))
 import Language.Tiger.Lexer qualified as L
@@ -140,7 +142,7 @@ TyDec :: { Dec Range }
 
 Ty :: { Ty Range }
   : TypeId             { TyId (getMeta $1) $1 }
-  | '{' TypeFields '}' { TyFields (range $1 <-> range $3) $2 }
+  | '{' TypeFields '}' { TyFields (range $1 <-> range $3) (V.fromList $2) }
   | array of TypeId    { TyArray (range $1 <-> getMeta $3) $3 }
 
 TypeFields :: { [TypeField Range] }
@@ -160,7 +162,8 @@ VarDec :: { Dec Range }
 -- Functions
 
 FunDec :: { Dec Range }
-  : function Id '(' TypeFields ')' optional(TypeAnnotation) '=' Exp { FunDec (range $1 <-> getMeta $8) $2 $4 $6 $8 }
+  : function Id '(' TypeFields ')' optional(TypeAnnotation) '=' Exp
+    { FunDec (range $1 <-> getMeta $8) $2 (V.fromList $4) $6 $8 }
 
 -- Expressions
 
@@ -200,17 +203,23 @@ Exp0 :: { Exp Range }
 Atom :: { Exp Range }
   : LValue                   { ELValue (getMeta $1) $1 }
   | nil                      { ENil (range $1) }
-  | Id '(' Args ')'          { ECall (getMeta $1 <-> range $4) $1 $3 }
-  | TypeId '{' RecFields '}' { ERecord (getMeta $1 <-> range $4) $1 $3 }
+  | Id '(' Args ')'          { ECall (getMeta $1 <-> range $4) $1 (V.fromList $3) }
+  | TypeId '{' RecFields '}' { ERecord (getMeta $1 <-> range $4) $1 (V.fromList $3) }
   | '(' Seq ')'              { ESeq (range $1 <-> range $3) $2 }
   | Lit                      { ELit (getMeta $1) $1 }
   | break                    { EBreak (range $1) }
-  | let Decs in ExpSeq end   { ELet (range $1 <-> range $5) $2 $4 }
+  | let Decs in ExpSeq end   { ELet (range $1 <-> range $5) (V.fromList $2) (V.fromList $4) }
   | '(' ')'                  { EUnit (range $1 <-> range $2) }
   | '(' Exp ')'              { EPar (range $1 <-> range $3) $2 }
 
 LValue :: { LValue Range }
-  : id AccessorChain { LValue (range $1 <-> getListMeta (range $1) $2) (Id (range $1) (getId $1)) $2 }
+  : id AccessorChain
+    {
+    let
+      chain = V.fromList $2
+    in
+    LValue (range $1 <-> getVecMeta (range $1) chain) (Id (range $1) (getId $1)) chain
+    }
 
 AccessorChain :: { [Accessor Range] }
   : many(Accessor) { $1 }
@@ -260,8 +269,8 @@ getString (Token _ (L.String s)) = s
 getMeta :: Foldable f => f a -> a
 getMeta = fromJust . getFirst . foldMap pure
 
-getListMeta :: Foldable f => a -> [f a] -> a
-getListMeta fallback = maybe fallback (getMeta . NE.last) . NE.nonEmpty
+getVecMeta :: Foldable f => a -> (Vector (f a)) -> a
+getVecMeta fallback vec = bool (getMeta $ V.last vec) fallback $ null vec
 
 data Id a
   = Id a ByteString
@@ -274,12 +283,12 @@ data TypeId a
 data Dec a
   = TyDec a (TypeId a) (Ty a)
   | VarDec a (Id a) (Exp a)
-  | FunDec a (Id a) [TypeField a] (Maybe (TypeId a)) (Exp a)
+  | FunDec a (Id a) (Vector (TypeField a)) (Maybe (TypeId a)) (Exp a)
   deriving stock (Eq, Foldable, Functor, Show, Traversable)
 
 data Ty a
   = TyId a (TypeId a)
-  | TyFields a [TypeField a]
+  | TyFields a (Vector (TypeField a))
   | TyArray a (TypeId a)
   deriving stock (Eq, Foldable, Functor, Show, Traversable)
 
@@ -309,9 +318,9 @@ data Exp a
   | EUnit a
   | ELit a (Lit a)
   | ENeg a (Exp a)
-  | ECall a (Id a) [Exp a]
+  | ECall a (Id a) (Vector (Exp a))
   | EBinOp a (BinOp a) (Exp a) (Exp a)
-  | ERecord a (TypeId a) [RecField a]
+  | ERecord a (TypeId a) (Vector (RecField a))
   | EArray a (TypeId a) (Exp a) (Exp a)
   | EAssign a (LValue a) (Exp a)
   | EIfThenElse a (Exp a) (Exp a) (Exp a)
@@ -319,12 +328,12 @@ data Exp a
   | EWhile a (Exp a) (Exp a)
   | EFor a (Id a) (Exp a) (Exp a) (Exp a)
   | EBreak a
-  | ELet a [Dec a] [Exp a]
+  | ELet a (Vector (Dec a)) (Vector (Exp a))
   | EPar a (Exp a)
   deriving stock (Eq, Foldable, Functor, Show, Traversable)
 
 data LValue a
-  = LValue a (Id a) [Accessor a]
+  = LValue a (Id a) (Vector (Accessor a))
   deriving stock (Eq, Foldable, Functor, Show, Traversable)
 
 data Accessor a
