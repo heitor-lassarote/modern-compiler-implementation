@@ -21,6 +21,7 @@ description:         Please see the README on GitHub at <https://github.com/heit
 
 dependencies:
 - base >= 4.7 && < 5
+- bytestring
 
 default-extensions:
 - BlockArguments
@@ -34,6 +35,10 @@ default-extensions:
 - MultiWayIf
 - NamedFieldPuns
 - OverloadedStrings
+- ScopedTypeVariables
+- TupleSections
+- TypeApplications
+- ViewPatterns
 
 ghc-options:
 - -Weverything
@@ -50,7 +55,10 @@ library:
   dependencies:
   - array
   - bytestring
+  - containers
   - hashable
+  - mtl
+  - unordered-containers
   - vector
   build-tools:
   - alex
@@ -64,7 +72,9 @@ executables:
     - -threaded
     - -rtsopts
     - -with-rtsopts=-N
-    dependencies: []
+    dependencies:
+    - mtl
+    - tiger
 
 tests:
   tiger-test:
@@ -77,7 +87,6 @@ tests:
     build-tools:
     - tasty-discover:tasty-discover
     dependencies:
-    - bytestring
     - filepath
     - tasty
     - tasty-hunit

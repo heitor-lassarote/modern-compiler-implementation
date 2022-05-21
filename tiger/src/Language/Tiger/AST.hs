@@ -19,12 +19,13 @@ import Data.ByteString.Lazy.Char8 (ByteString)
 import Data.Hashable (Hashable)
 import Data.Maybe (fromJust)
 import Data.Monoid (First (..))
+import Data.String (IsString)
 import Data.Vector (Vector)
 
 newtype Name
   = Name ByteString
   deriving stock (Eq, Show)
-  deriving newtype (Hashable)
+  deriving newtype (Hashable, IsString)
 
 data Id a
   = Id a Name
