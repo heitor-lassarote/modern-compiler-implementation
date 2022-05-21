@@ -1,28 +1,19 @@
 {
 module Language.Tiger.Parser
-  ( parseTiger
-
-  -- * Variable and type IDs
-  , Id (..), TypeId (..)
-
-  -- * Declarations
-  , Dec (..)
-
-  -- * Types
-  , Ty (..), TypeField (..)
-
-  -- * Expresions
-  , BinOp (..), Exp (..), LValue (..), Seq (..), Lit (..), RecField (..)
+  ( parseTiger, runAlex
   ) where
 
 import Data.Bool (bool)
 import Data.ByteString.Lazy.Char8 (ByteString)
-import Data.Maybe (fromJust)
-import Data.Monoid (First (..))
 import Data.Vector (Vector)
 import Data.Vector qualified as V
 
-import Language.Tiger.Lexer (Token (..))
+import Language.Tiger.AST
+  ( Accessor (..), BinOp (..), Dec (..), Exp (..), Id (..), LValue (..), Lit (..)
+  , Name (..), RecField (..), Seq (..), Ty (..), TypeField (..), TypeId (..)
+  , getMeta
+  )
+import Language.Tiger.Lexer (Token (..), runAlex)
 import Language.Tiger.Lexer qualified as L
 import Language.Tiger.Position (Pos (..), Range (..), (<->))
 }
@@ -50,51 +41,51 @@ Ambiguity:
 %lexer { lexer } { Token _ L.EOF }
 
 %token
-  array     { $$@(Token _ L.Array) }
-  break     { $$@(Token _ L.Break) }
-  do        { $$@(Token _ L.Do) }
-  else      { $$@(Token _ L.Else) }
-  end       { $$@(Token _ L.End) }
-  for       { $$@(Token _ L.For) }
-  function  { $$@(Token _ L.Function) }
-  id        { $$@(Token _ (L.Id _)) }
-  if        { $$@(Token _ L.If) }
-  in        { $$@(Token _ L.In) }
-  int       { $$@(Token _ (L.Int _)) }
-  let       { $$@(Token _ L.Let) }
-  of        { $$@(Token _ L.Of) }
-  nil       { $$@(Token _ L.Nil) }
-  string    { $$@(Token _ (L.String _)) }
-  then      { $$@(Token _ L.Then) }
-  to        { $$@(Token _ L.To) }
-  type      { $$@(Token _ L.Type) }
-  var       { $$@(Token _ L.Var) }
-  while     { $$@(Token _ L.While) }
-  ':='      { $$@(Token _ L.Assign) }
-  '='       { $$@(Token _ L.EQ) }
-  '<>'      { $$@(Token _ L.NEQ) }
-  '>'       { $$@(Token _ L.GT) }
-  '<'       { $$@(Token _ L.LT) }
-  '>='      { $$@(Token _ L.GE) }
-  '<='      { $$@(Token _ L.LE) }
-  '{'       { $$@(Token _ L.LBrace) }
-  '}'       { $$@(Token _ L.RBrace) }
-  ']'       { $$@(Token _ L.RBrack) }
-  '['       { $$@(Token _ L.LBrack) }
-  ')'       { $$@(Token _ L.RParen) }
-  '('       { $$@(Token _ L.LParen) }
-  ';'       { $$@(Token _ L.Semicolon) }
-  ':'       { $$@(Token _ L.Colon) }
-  ','       { $$@(Token _ L.Comma) }
-  '/'       { $$@(Token _ L.Divide) }
-  '*'       { $$@(Token _ L.Times) }
-  '-'       { $$@(Token _ L.Minus) }
-  '+'       { $$@(Token _ L.Plus) }
-  '.'       { $$@(Token _ L.Dot) }
-  '&'       { $$@(Token _ L.And) }
-  '|'       { $$@(Token _ L.Or) }
+  array     { Token _ L.Array }
+  break     { Token _ L.Break }
+  do        { Token _ L.Do }
+  else      { Token _ L.Else }
+  end       { Token _ L.End }
+  for       { Token _ L.For }
+  function  { Token _ L.Function }
+  id        { Token _ (L.Id _) }
+  if        { Token _ L.If }
+  in        { Token _ L.In }
+  int       { Token _ (L.Int _) }
+  let       { Token _ L.Let }
+  of        { Token _ L.Of }
+  nil       { Token _ L.Nil }
+  string    { Token _ (L.String _) }
+  then      { Token _ L.Then }
+  to        { Token _ L.To }
+  type      { Token _ L.Type }
+  var       { Token _ L.Var }
+  while     { Token _ L.While }
+  ':='      { Token _ L.Assign }
+  '='       { Token _ L.EQ }
+  '<>'      { Token _ L.NEQ }
+  '>'       { Token _ L.GT }
+  '<'       { Token _ L.LT }
+  '>='      { Token _ L.GE }
+  '<='      { Token _ L.LE }
+  '{'       { Token _ L.LBrace }
+  '}'       { Token _ L.RBrace }
+  ']'       { Token _ L.RBrack }
+  '['       { Token _ L.LBrack }
+  ')'       { Token _ L.RParen }
+  '('       { Token _ L.LParen }
+  ';'       { Token _ L.Semicolon }
+  ':'       { Token _ L.Colon }
+  ','       { Token _ L.Comma }
+  '/'       { Token _ L.Divide }
+  '*'       { Token _ L.Times }
+  '-'       { Token _ L.Minus }
+  '+'       { Token _ L.Plus }
+  '.'       { Token _ L.Dot }
+  '&'       { Token _ L.And }
+  '|'       { Token _ L.Or }
 
-%right in
+%right in of do else ':='
 %left '|'
 %left '&'
 %nonassoc '=' '<>' '>' '<' '>=' '<='
@@ -167,26 +158,22 @@ FunDec :: { Dec Range }
 
 -- Expressions
 
-BinOp :: { BinOp Range }
-  : '/'  { Divide (range $1) }
-  | '*'  { Times  (range $1) }
-  | '-'  { Minus  (range $1) }
-  | '+'  { Plus   (range $1) }
-  | '='  { Eq     (range $1) }
-  | '<>' { Neq    (range $1) }
-  | '>'  { Gt     (range $1) }
-  | '<'  { Lt     (range $1) }
-  | '>=' { Ge     (range $1) }
-  | '<=' { Le     (range $1) }
-  | '&'  { Conj   (range $1) }
-  | '|'  { Disj   (range $1) }
-
 Exp :: { Exp Range }
-  : Atom BinOp Exp { EBinOp (getMeta $1 <-> getMeta $3) $2 $1 $3 }
-  | ExpNeg         { $1 }
+  : Exp '/'  Exp { EBinOp (getMeta $1 <-> getMeta $3) (Divide (range $2)) $1 $3 }
+  | Exp '*'  Exp { EBinOp (getMeta $1 <-> getMeta $3) (Times  (range $2)) $1 $3 }
+  | Exp '-'  Exp { EBinOp (getMeta $1 <-> getMeta $3) (Minus  (range $2)) $1 $3 }
+  | Exp '+'  Exp { EBinOp (getMeta $1 <-> getMeta $3) (Plus   (range $2)) $1 $3 }
+  | Exp '='  Exp { EBinOp (getMeta $1 <-> getMeta $3) (Eq     (range $2)) $1 $3 }
+  | Exp '<>' Exp { EBinOp (getMeta $1 <-> getMeta $3) (Neq    (range $2)) $1 $3 }
+  | Exp '>'  Exp { EBinOp (getMeta $1 <-> getMeta $3) (Gt     (range $2)) $1 $3 }
+  | Exp '<'  Exp { EBinOp (getMeta $1 <-> getMeta $3) (Lt     (range $2)) $1 $3 }
+  | Exp '>=' Exp { EBinOp (getMeta $1 <-> getMeta $3) (Ge     (range $2)) $1 $3 }
+  | Exp '<=' Exp { EBinOp (getMeta $1 <-> getMeta $3) (Le     (range $2)) $1 $3 }
+  | Exp '&'  Exp { EBinOp (getMeta $1 <-> getMeta $3) (Conj   (range $2)) $1 $3 }
+  | Exp '|'  Exp { EBinOp (getMeta $1 <-> getMeta $3) (Disj   (range $2)) $1 $3 }
+  | ExpNeg       { $1 }
 
 ExpNeg :: { Exp Range }
-ExpNeg
   : '-' Exp0 %prec NEG { ENeg (range $1 <-> getMeta $2) $2 }
   | Exp0               { $1 }
 
@@ -215,10 +202,8 @@ Atom :: { Exp Range }
 LValue :: { LValue Range }
   : id AccessorChain
     {
-    let
-      chain = V.fromList $2
-    in
-    LValue (range $1 <-> getVecMeta (range $1) chain) (Id (range $1) (getId $1)) chain
+      let chain = V.fromList $2 in
+      LValue (range $1 <-> getVecMeta (range $1) chain) (Id (range $1) (getId $1)) chain
     }
 
 AccessorChain :: { [Accessor Range] }
@@ -257,8 +242,8 @@ parseError _ = do
 lexer :: (L.Token -> L.Alex a) -> L.Alex a
 lexer = (=<< L.alexMonadScan)
 
-getId :: Token -> ByteString
-getId (Token _ (L.Id i)) = i
+getId :: Token -> Name
+getId (Token _ (L.Id i)) = Name i
 
 getInt :: Token -> Integer
 getInt (Token _ (L.Int i)) = i
@@ -266,92 +251,6 @@ getInt (Token _ (L.Int i)) = i
 getString :: Token -> ByteString
 getString (Token _ (L.String s)) = s
 
-getMeta :: Foldable f => f a -> a
-getMeta = fromJust . getFirst . foldMap pure
-
 getVecMeta :: Foldable f => a -> (Vector (f a)) -> a
 getVecMeta fallback vec = bool (getMeta $ V.last vec) fallback $ null vec
-
-data Id a
-  = Id a ByteString
-  deriving stock (Eq, Foldable, Functor, Show, Traversable)
-
-data TypeId a
-  = TypeId a ByteString
-  deriving stock (Eq, Foldable, Functor, Show, Traversable)
-
-data Dec a
-  = TyDec a (TypeId a) (Ty a)
-  | VarDec a (Id a) (Exp a)
-  | FunDec a (Id a) (Vector (TypeField a)) (Maybe (TypeId a)) (Exp a)
-  deriving stock (Eq, Foldable, Functor, Show, Traversable)
-
-data Ty a
-  = TyId a (TypeId a)
-  | TyFields a (Vector (TypeField a))
-  | TyArray a (TypeId a)
-  deriving stock (Eq, Foldable, Functor, Show, Traversable)
-
-data TypeField a
-  = TypeField a (Id a) (TypeId a)
-  deriving stock (Eq, Foldable, Functor, Show, Traversable)
-
-data BinOp a
-  = Divide a
-  | Times a
-  | Minus a
-  | Plus a
-  | Eq a
-  | Neq a
-  | Lt a
-  | Gt a
-  | Ge a
-  | Le a
-  | Conj a
-  | Disj a
-  deriving stock (Eq, Foldable, Functor, Show, Traversable)
-
-data Exp a
-  = ELValue a (LValue a)
-  | ENil a
-  | ESeq a (Seq a)
-  | EUnit a
-  | ELit a (Lit a)
-  | ENeg a (Exp a)
-  | ECall a (Id a) (Vector (Exp a))
-  | EBinOp a (BinOp a) (Exp a) (Exp a)
-  | ERecord a (TypeId a) (Vector (RecField a))
-  | EArray a (TypeId a) (Exp a) (Exp a)
-  | EAssign a (LValue a) (Exp a)
-  | EIfThenElse a (Exp a) (Exp a) (Exp a)
-  | EIfThen a (Exp a) (Exp a)
-  | EWhile a (Exp a) (Exp a)
-  | EFor a (Id a) (Exp a) (Exp a) (Exp a)
-  | EBreak a
-  | ELet a (Vector (Dec a)) (Vector (Exp a))
-  | EPar a (Exp a)
-  deriving stock (Eq, Foldable, Functor, Show, Traversable)
-
-data LValue a
-  = LValue a (Id a) (Vector (Accessor a))
-  deriving stock (Eq, Foldable, Functor, Show, Traversable)
-
-data Accessor a
-  = AccessorRecField a (Id a)
-  | AccessorArraySub a (Exp a)
-  deriving stock (Eq, Foldable, Functor, Show, Traversable)
-
-data Seq a
-  = SeqSpine a (Exp a) (Seq a)
-  | SeqNil a (Exp a) (Exp a)
-  deriving stock (Eq, Foldable, Functor, Show, Traversable)
-
-data Lit a
-  = LInt a Integer
-  | LString a ByteString
-  deriving stock (Eq, Foldable, Functor, Show, Traversable)
-
-data RecField a
-  = RecField a (Id a) (Exp a)
-  deriving stock (Eq, Foldable, Functor, Show, Traversable)
 }

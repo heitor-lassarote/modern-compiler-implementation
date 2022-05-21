@@ -28,6 +28,7 @@ default-extensions:
 - DeriveFunctor
 - DeriveTraversable
 - DerivingStrategies
+- GeneralizedNewtypeDeriving
 - ImportQualifiedPost
 - LambdaCase
 - MultiWayIf
@@ -49,6 +50,7 @@ library:
   dependencies:
   - array
   - bytestring
+  - hashable
   - vector
   build-tools:
   - alex

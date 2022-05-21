@@ -10,7 +10,6 @@ data Pos = Pos
   , offset :: !Int
   } deriving stock (Eq, Show)
 
-
 data Range = Range
   { start :: Pos
   , end :: Pos

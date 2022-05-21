@@ -25,6 +25,7 @@ source-repository head
 
 library
   exposed-modules:
+      Language.Tiger.AST
       Language.Tiger.Lexer
       Language.Tiger.Parser
       Language.Tiger.Position
@@ -38,6 +39,7 @@ library
       DeriveFunctor
       DeriveTraversable
       DerivingStrategies
+      GeneralizedNewtypeDeriving
       ImportQualifiedPost
       LambdaCase
       MultiWayIf
@@ -51,6 +53,7 @@ library
       array
     , base >=4.7 && <5
     , bytestring
+    , hashable
     , vector
   default-language: Haskell2010
 
@@ -66,6 +69,7 @@ executable tiger-exe
       DeriveFunctor
       DeriveTraversable
       DerivingStrategies
+      GeneralizedNewtypeDeriving
       ImportQualifiedPost
       LambdaCase
       MultiWayIf
@@ -90,6 +94,7 @@ test-suite tiger-test
       DeriveFunctor
       DeriveTraversable
       DerivingStrategies
+      GeneralizedNewtypeDeriving
       ImportQualifiedPost
       LambdaCase
       MultiWayIf
