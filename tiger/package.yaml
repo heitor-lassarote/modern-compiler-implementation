@@ -58,6 +58,7 @@ library:
   - containers
   - hashable
   - mtl
+  - text
   - unordered-containers
   - vector
   build-tools:

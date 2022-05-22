@@ -9,7 +9,6 @@ import Control.Monad (void, when)
 import Control.Monad.Reader (MonadReader, ReaderT, ask, asks, local)
 import Control.Monad.State (MonadState, StateT, execStateT, get, put)
 import Control.Monad.Trans (lift)
-import Data.ByteString.Lazy (ByteString)
 import Data.Foldable (fold, for_)
 import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HashMap
@@ -109,21 +108,19 @@ data TcState = TcState
 
 initTcState :: TcState
 initTcState = TcState
-  { hashtable = HashMap.fromList $ zip
-    (Language.Tiger.AST.Name <$> vars <> tys)
-    (pure <$> [0..])
+  { hashtable = HashMap.fromList $ zip (vars <> tys) (pure <$> [0..])
   , nextsym = 12
   }
   where
     -- | Built-in functions
-    vars :: [ByteString]
+    vars :: [Name]
     vars =
       [ "print", "flush", "getchar", "ord", "chr", "size", "substring", "concat"
       , "not", "exit"
       ]
 
     -- | Built-in types
-    tys :: [ByteString]
+    tys :: [Name]
     tys = ["int", "string"]
 
 newtype Tc a = Tc

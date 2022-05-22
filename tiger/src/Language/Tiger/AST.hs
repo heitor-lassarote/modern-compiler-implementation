@@ -15,15 +15,15 @@ module Language.Tiger.AST
   , getMeta
   ) where
 
-import Data.ByteString.Lazy.Char8 (ByteString)
 import Data.Hashable (Hashable)
 import Data.Maybe (fromJust)
 import Data.Monoid (First (..))
 import Data.String (IsString)
+import Data.Text (Text)
 import Data.Vector (Vector)
 
 newtype Name
-  = Name ByteString
+  = Name Text
   deriving stock (Eq, Show)
   deriving newtype (Hashable, IsString)
 
@@ -103,7 +103,7 @@ data Seq a
 
 data Lit a
   = LInt a Integer
-  | LString a ByteString
+  | LString a Text
   deriving stock (Eq, Foldable, Functor, Show, Traversable)
 
 data RecField a

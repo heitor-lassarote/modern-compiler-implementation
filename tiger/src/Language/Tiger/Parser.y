@@ -5,6 +5,9 @@ module Language.Tiger.Parser
 
 import Data.Bool (bool)
 import Data.ByteString.Lazy.Char8 (ByteString)
+import Data.ByteString.Lazy.Char8 qualified as BS
+import Data.Text (Text)
+import Data.Text.Encoding qualified as T
 import Data.Vector (Vector)
 import Data.Vector qualified as V
 
@@ -243,13 +246,13 @@ lexer :: (L.Token -> L.Alex a) -> L.Alex a
 lexer = (=<< L.alexMonadScan)
 
 getId :: Token -> Name
-getId (Token _ (L.Id i)) = Name i
+getId (Token _ (L.Id i)) = Name $ T.decodeUtf8 $ BS.toStrict i
 
 getInt :: Token -> Integer
 getInt (Token _ (L.Int i)) = i
 
-getString :: Token -> ByteString
-getString (Token _ (L.String s)) = s
+getString :: Token -> Text
+getString (Token _ (L.String s)) = T.decodeUtf8 $ BS.toStrict s
 
 getVecMeta :: Foldable f => a -> (Vector (f a)) -> a
 getVecMeta fallback vec = bool (getMeta $ V.last vec) fallback $ null vec

@@ -64,6 +64,7 @@ library
     , containers
     , hashable
     , mtl
+    , text
     , unordered-containers
     , vector
   default-language: Haskell2010
