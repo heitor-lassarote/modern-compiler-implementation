@@ -29,6 +29,7 @@ library
       Language.Tiger.Lexer
       Language.Tiger.Parser
       Language.Tiger.Position
+      Language.Tiger.Pretty
       Language.Tiger.Semantic.Error
       Language.Tiger.Semantic.TypeChecker
       Language.Tiger.Semantic.Types
@@ -64,6 +65,7 @@ library
     , containers
     , hashable
     , mtl
+    , prettyprinter
     , text
     , unordered-containers
     , vector

@@ -60,8 +60,8 @@ data BinOp a
   | Neq a
   | Lt a
   | Gt a
-  | Ge a
   | Le a
+  | Ge a
   | Conj a
   | Disj a
   deriving stock (Eq, Foldable, Functor, Show, Traversable)
@@ -109,6 +109,8 @@ data Lit a
 data RecField a
   = RecField a (Id a) (Exp a)
   deriving stock (Eq, Foldable, Functor, Show, Traversable)
+
+-- * Utilities
 
 getMeta :: Foldable f => f a -> a
 getMeta = fromJust . getFirst . foldMap pure

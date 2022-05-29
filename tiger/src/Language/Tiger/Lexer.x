@@ -199,7 +199,7 @@ emitCurrent inp@(_, _, str, _) len
 
 enterString :: AlexAction Token
 enterString (p, _, _, _) _ = do
-  modify \s -> s{lexerStringStart = Just $ mkPos p}
+  modify \s -> s{lexerCurrentString = "\"", lexerStringStart = Just $ mkPos p}
   alexMonadScan
 
 exitString :: AlexAction Token
@@ -208,9 +208,8 @@ exitString (AlexPn offset line column, _, _, _) _ = do
   let str = lexerCurrentString s
   let start = fromJust $ lexerStringStart s
   put s{lexerCurrentString = "", lexerStringStart = Nothing}
-  pure $ Token (Range start end) $ String $ BS.pack $ reverse str
+  pure $ Token (Range start end) $ String $ BS.pack $ reverse $ '"' : str
   where
-    -- XXX: Not sure why, but I had to add one here so the ranges are correct.
     end = Pos
       { line
       , column = column + 1

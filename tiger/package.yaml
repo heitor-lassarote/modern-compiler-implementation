@@ -58,6 +58,7 @@ library:
   - containers
   - hashable
   - mtl
+  - prettyprinter
   - text
   - unordered-containers
   - vector
