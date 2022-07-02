@@ -28,15 +28,18 @@ instance Pretty (Id a) where
 instance Pretty (TypeId a) where
   pretty (TypeId _ name) = pretty name
 
+prettyTypeAnnotation :: Maybe (TypeId a) -> Doc ann
+prettyTypeAnnotation = maybe "" ((PP.colon <+>) . pretty)
+
 instance Pretty (Dec a) where
   pretty = \case
     TyDec _ tyName ty ->
       "type" <+> pretty tyName <+> PP.equals <> PP.softline <> pretty ty
-    VarDec _ id' expr ->
-      "var" <+> pretty id' <+> ":=" <> PP.softline <> pretty expr
+    VarDec _ id' tyM expr ->
+      "var" <+> pretty id' <+> prettyTypeAnnotation tyM <+> ":=" <> PP.softline <> pretty expr
     FunDec _ id' fields retM expr -> PP.vsep
       [ "function" <+> pretty id' <> PP.tupled (pretty <$> V.toList fields)
-        <> maybe "" ((PP.colon <+>) . pretty) retM <+> PP.equals
+        <> prettyTypeAnnotation retM <+> PP.equals
       , indent (pretty expr)
       ]
 

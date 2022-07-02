@@ -1,6 +1,9 @@
 module Language.Tiger.Semantic.Error
   ( ArityMismatch (..)
+  , AssignedToForVar (..)
   , FieldMismatch (..)
+  , IllegalBreak (..)
+  , IllegalNil (..)
   , InequalityUnsupportedTypes (..)
   , NotAFunction (..)
   , TypeMismatch (..)
@@ -8,23 +11,32 @@ module Language.Tiger.Semantic.Error
   , UnknownField (..)
   , UnsupportedFirstClassFunction (..)
   , arityMismatch
+  , assignedToForVar
   , fieldMismatch
+  , illegalBreak
+  , illegalNil
   , inequalityUnsupportedTypes
   , notAFunction
   , typeMismatch
   , undefinedSymbol
   , unknownField
   , unsupportedFirstClassFunction
+
+  , panic
   ) where
 
 import Control.Exception (Exception (..), throw)
+import GHC.Stack (HasCallStack)
 
 import Language.Tiger.AST (BinOp, Name)
 import Language.Tiger.Position (Range)
 import Language.Tiger.Semantic.Types (Symbol, Type (..))
 
-displayError :: Range -> String ->  String
+displayError :: Range -> String -> String
 displayError range name = "Error at " <> show range <> ":\n" <> name <> ": "
+
+panic :: HasCallStack => String -> a
+panic msg = error $ "impossible! " <> msg
 
 data ArityMismatch = ArityMismatch Name Int Int Range
   deriving stock (Eq, Show)
@@ -34,6 +46,14 @@ instance Exception ArityMismatch where
     displayError range "Arity mismatch"
     <> "The function " <> show name <> " expects " <> show expected <> " arguments, but " <> show actual <> " were given."
 
+data AssignedToForVar = AssignedToForVar Name Range
+  deriving stock (Eq, Show)
+
+instance Exception AssignedToForVar where
+  displayException (AssignedToForVar name range) =
+    displayError range "Attempt to assign to non-assignable variable bound in for"
+    <> show name <> " can't be assigned to, it was bound by a for loop."
+
 data FieldMismatch = FieldMismatch (Symbol, Type) (Symbol, Type) Range
   deriving stock (Eq, Show)
 
@@ -41,6 +61,22 @@ instance Exception FieldMismatch where
   displayException (FieldMismatch (expectedName, expectedType) (actualName, actualType) range) =
     displayError range "Field mismatch"
     <> "Expected a field with name" <> show expectedName <> " of type " <> show expectedType <> ", but got a field with name " <> show actualName <> " of type " <> show actualType <> "."
+
+newtype IllegalBreak = IllegalBreak Range
+  deriving stock (Eq, Show)
+
+instance Exception IllegalBreak where
+  displayException (IllegalBreak range) =
+    displayError range "Illegal usage of Break"
+    <> "`Break` is not allowed to appear outside a `for` or `while` loop."
+
+newtype IllegalNil = IllegalNil Range
+  deriving stock (Eq, Show)
+
+instance Exception IllegalNil where
+  displayException (IllegalNil range) =
+    displayError range "Illegal usage of Nil"
+    <> "`Nil` is not allowed to appear in this expression."
 
 data InequalityUnsupportedTypes = InequalityUnsupportedTypes (BinOp Range) Type Type Range
   deriving stock (Eq, Show)
@@ -93,8 +129,17 @@ instance Exception UnsupportedFirstClassFunction where
 arityMismatch :: Name -> Int -> Int -> Range -> a
 arityMismatch name expected actual range = throw $ ArityMismatch name expected actual range
 
+assignedToForVar :: Name -> Range -> a
+assignedToForVar name range = throw $ AssignedToForVar name range
+
 fieldMismatch :: (Symbol, Type) -> (Symbol, Type) -> Range -> a
 fieldMismatch expected actual range = throw $ FieldMismatch expected actual range
+
+illegalBreak :: Range -> a
+illegalBreak range = throw $ IllegalBreak range
+
+illegalNil :: Range -> a
+illegalNil range = throw $ IllegalNil range
 
 inequalityUnsupportedTypes :: BinOp Range -> Type -> Type -> Range -> a
 inequalityUnsupportedTypes op left right range = throw $ InequalityUnsupportedTypes op left right range

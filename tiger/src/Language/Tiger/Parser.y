@@ -151,7 +151,7 @@ Id :: { Id Range }
   : id { Id (range $1) (getId $1) }
 
 VarDec :: { Dec Range }
-  : var Id ':=' Exp { VarDec (range $1 <-> getMeta $4) $2 $4 }
+  : var Id optional(TypeAnnotation) ':=' Exp { VarDec (range $1 <-> getMeta $5) $2 $3 $5 }
 
 -- Functions
 

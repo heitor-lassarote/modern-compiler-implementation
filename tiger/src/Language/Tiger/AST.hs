@@ -37,7 +37,7 @@ data TypeId a
 
 data Dec a
   = TyDec a (TypeId a) (Ty a)
-  | VarDec a (Id a) (Exp a)
+  | VarDec a (Id a) (Maybe (TypeId a)) (Exp a)
   | FunDec a (Id a) (Vector (TypeField a)) (Maybe (TypeId a)) (Exp a)
   deriving stock (Eq, Foldable, Functor, Show, Traversable)
 

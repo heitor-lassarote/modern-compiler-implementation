@@ -5,10 +5,10 @@ import Control.Monad.State (evalStateT)
 import Data.ByteString.Lazy.Char8 qualified as BS
 
 import Language.Tiger.Parser (parseTiger, runAlex)
-import Language.Tiger.Semantic.TypeChecker (initTcEnv, initTcState, runTc, transProg)
+import Language.Tiger.Semantic.TypeChecker (initTcReader, initTcState, runTc, transProg)
 
 main :: IO ()
 main = do
   file <- BS.readFile "test/programs/parser/positive/merge.tig"
   let parsed = runAlex file parseTiger
-  either putStrLn (flip evalStateT initTcState . flip runReaderT initTcEnv . runTc . transProg) parsed
+  either putStrLn (flip evalStateT initTcState . flip runReaderT initTcReader . runTc . transProg) parsed

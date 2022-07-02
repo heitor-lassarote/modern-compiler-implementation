@@ -26,7 +26,7 @@ let
       var i := readint(any)
     in
       if any.any
-      then list{first = i, read = readlist()}
+      then list{first = i, rest = readlist()}
       else (buffer := getchar(); nil)
     end
 

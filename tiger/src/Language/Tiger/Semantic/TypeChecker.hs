@@ -1,19 +1,21 @@
 module Language.Tiger.Semantic.TypeChecker
-  ( Tc, runTc, TcState, initTcState, TcEnv, initTcEnv
+  ( Tc, runTc, TcState, initTcState, TcReader, initTcReader, TcEnv
   , transProg
   ) where
 
 import Prelude hiding (exp)
 
-import Control.Monad (void, when)
+import Control.Monad (unless, void, when)
 import Control.Monad.Reader (MonadReader, ReaderT, ask, asks, local)
 import Control.Monad.State (MonadState, StateT, execStateT, get, put)
 import Control.Monad.Trans (lift)
+import Data.Bool (bool)
 import Data.Foldable (fold, for_)
 import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HashMap
 import Data.IntMap.Strict (IntMap)
 import Data.IntMap.Strict qualified as IntMap
+import Data.IORef (newIORef, readIORef, writeIORef)
 import Data.List.NonEmpty (NonEmpty (..), (<|))
 import Data.List.NonEmpty qualified as NE
 import Data.Traversable (for)
@@ -28,16 +30,20 @@ import Language.Tiger.AST
   )
 import Language.Tiger.Position (Range (..), (<->))
 import Language.Tiger.Semantic.Error
-  ( arityMismatch, fieldMismatch, inequalityUnsupportedTypes, notAFunction
-  , typeMismatch, undefinedSymbol, unknownField, unsupportedFirstClassFunction
+  ( arityMismatch, assignedToForVar, fieldMismatch, illegalBreak, illegalNil
+  , inequalityUnsupportedTypes, notAFunction, panic, typeMismatch, undefinedSymbol
+  , unknownField, unsupportedFirstClassFunction
   )
 import Language.Tiger.Semantic.Types (Symbol (..), Type (..))
+import Language.Tiger.Semantic.Types qualified as Ty
 import Language.Tiger.Util (mapAccumLM)
 
 -- * Symbols
 
+data Assignable = Can'tAssign | CanAssign
+
 data EnvEntry
-  = VarEntry Type
+  = VarEntry Assignable Type
   | FunEntry (Vector Type) Type
 
 symbol :: Name -> Tc Symbol
@@ -69,6 +75,17 @@ data ExpTy = ExpTy
   , ty :: Type
   }
 
+data TcReader = TcReader
+  { tcEnv :: TcEnv
+  , inLoop :: Bool
+  }
+
+initTcReader :: TcReader
+initTcReader = TcReader
+  { tcEnv = initTcEnv
+  , inLoop = False
+  }
+
 data TcEnv = TcEnv
   { venv :: Table EnvEntry
   , tenv :: Table Type
@@ -80,7 +97,7 @@ instance Semigroup TcEnv where
     TcEnv (venv2 <> venv1) (tenv2 <> tenv1)
 
 instance Monoid TcEnv where
-  mempty = initTcEnv
+  mempty = TcEnv mempty mempty
 
 initTcEnv :: TcEnv
 initTcEnv = TcEnv
@@ -100,6 +117,9 @@ initTcEnv = TcEnv
   }
   where
     fun tys ret = FunEntry (V.fromList tys) ret
+
+withEnv :: (TcEnv -> TcEnv) -> Tc a -> Tc a
+withEnv f = local (\r -> r{tcEnv = f $ tcEnv r})
 
 data TcState = TcState
   { hashtable :: HashMap Name (NonEmpty Int)
@@ -124,9 +144,9 @@ initTcState = TcState
     tys = ["int", "string"]
 
 newtype Tc a = Tc
-  { runTc :: ReaderT TcEnv (StateT TcState IO) a
+  { runTc :: ReaderT TcReader (StateT TcState IO) a
   } deriving newtype (Functor, Applicative, Monad)
-    deriving newtype (MonadReader TcEnv, MonadState TcState)
+    deriving newtype (MonadReader TcReader, MonadState TcState)
 
 data OpType
   = Arithmetic
@@ -149,19 +169,36 @@ opType = \case
   Conj   _ -> Boolean
   Disj   _ -> Boolean
 
-checkTypes :: Range -> Type -> Type -> Tc ()
-checkTypes range expected actual
-  | expected == actual = pure ()
-  | otherwise          = typeMismatch expected actual range
+canonicalizeType :: Range -> Type -> Tc Type
+canonicalizeType range (Ty.Name _ ref) = do
+  t <- ioToTc $ readIORef ref
+  maybe (panic $ "Name without type was dereferenced at " <> show range) (canonicalizeType range) t
+canonicalizeType _ t = pure t
+
+checkTypes :: Range -> Type -> Type -> Tc Type
+checkTypes range expected actual = do
+  expected' <- canonicalizeType range expected
+  actual'   <- canonicalizeType range actual
+  case (expected', actual') of
+    (Nil, Nil) -> illegalNil range
+    (Nil, Record{}) -> pure actual'
+    (Record{}, Nil) -> pure expected'
+    (Nil, _) -> illegalNil range
+    (_, Nil) -> illegalNil range
+    _ | expected' == actual' -> pure expected'
+      | otherwise -> typeMismatch expected' actual' range
 
 checkFields :: Range -> (Symbol, Type) -> (Symbol, Type) -> Tc ()
-checkFields range expected actual
-  | expected == actual = pure ()
-  | otherwise          = fieldMismatch expected actual range
+checkFields range (expectedS, expectedT) (actualS, actualT) = do
+  expectedT' <- canonicalizeType range expectedT
+  actualT'   <- canonicalizeType range actualT
+  let expected' = (expectedS, expectedT')
+  let actual'   = (actualS,   actualT')
+  bool (fieldMismatch expected' actual' range) (pure ()) (expected' == actual')
 
 lookSymbol :: (TcEnv -> Table a) -> Name -> Range -> Tc a
 lookSymbol selector name range = do
-  env <- asks selector
+  env <- asks $ selector . tcEnv
   sym <- symbol name
   maybe (undefinedSymbol name range) pure (look sym env)
 
@@ -176,12 +213,12 @@ ioToTc = Tc . lift . lift
 
 transVar :: LValue Range -> Tc ExpTy
 transVar (LValue _range (Id idPos idName) accessorChain) = do
-  env <- asks venv
+  env <- asks $ venv . tcEnv
 
   idSym <- symbol idName
   ty <- case look idSym env of
     Nothing -> undefinedSymbol idName idPos
-    Just (VarEntry tyId) ->
+    Just (VarEntry _ tyId) ->
       flip execStateT tyId $ for_ accessorChain $ \case
         AccessorRecField accessorPos (Id fieldPos fieldName) ->
           case tyId of
@@ -191,7 +228,7 @@ transVar (LValue _range (Id idPos idName) accessorChain) = do
             _ -> unknownField fieldName tyId fieldPos
         AccessorArraySub accessorPos exp -> do
           ExpTy{ty = tyExp} <- lift $ transExp exp
-          lift $ checkTypes accessorPos Int tyExp
+          lift $ void $ checkTypes accessorPos Int tyExp
           case tyId of
             Array _ ty -> put ty
             _ -> do
@@ -213,12 +250,12 @@ transExp = \case
     LString _ _ -> ExpTy{exp = Translate, ty = String}
   ENeg range exp -> do
     ExpTy{ty = ty} <- transExp exp
-    checkTypes range Int ty
+    void $ checkTypes range Int ty
     pure ExpTy{exp = Translate, ty = Int}
   ECall range (Id idRange idName) args -> do
     tyArgs <- traverse (fmap ty . transExp) args
     varSymbol idName idRange >>= \case
-      VarEntry typ -> notAFunction idName typ idRange
+      VarEntry _ typ -> notAFunction idName typ idRange
       FunEntry argTypes retType -> do
         when (V.length argTypes /= V.length tyArgs) $
           arityMismatch idName (V.length argTypes) (V.length tyArgs) range
@@ -232,10 +269,10 @@ transExp = \case
       rangeRight = getMeta right
     case opType op of
       Arithmetic -> do
-        checkTypes rangeLeft Int tyLeft
-        checkTypes rangeRight Int tyRight
+        void $ checkTypes rangeLeft Int tyLeft
+        void $ checkTypes rangeRight Int tyRight
       Equality ->
-        checkTypes (getMeta right) tyLeft tyRight
+        void $ checkTypes (getMeta right) tyLeft tyRight
       Inequality ->
         case (tyLeft, tyRight) of
           (Int, Int) -> pure ()
@@ -244,8 +281,8 @@ transExp = \case
           (String, _) -> typeMismatch String tyRight rangeRight
           (_, _) -> inequalityUnsupportedTypes op tyLeft tyRight (rangeLeft <-> rangeRight)
       Boolean -> do
-        checkTypes rangeLeft Int tyLeft
-        checkTypes rangeRight Int tyRight
+        void $ checkTypes rangeLeft Int tyLeft
+        void $ checkTypes rangeRight Int tyRight
     pure ExpTy{exp = Translate, ty = Int}
   ERecord range (TypeId tyPos tyName) recFields -> do
     -- Type-check each field of the record, and return each field name with the
@@ -266,7 +303,7 @@ transExp = \case
         typeMismatch (Record unique tyFields) other tyPos
   EArray _ (TypeId tyPos tyName) numElements initValue -> do
     ExpTy{ty = tyNum} <- transExp numElements
-    checkTypes (getMeta numElements) Int tyNum
+    void $ checkTypes (getMeta numElements) Int tyNum
     ExpTy{ty = tyInit} <- transExp initValue
     ty <- typeSymbol tyName tyPos
     innerTy <- case ty of
@@ -274,61 +311,61 @@ transExp = \case
       _ -> do
         unique <- ioToTc newUnique
         typeMismatch (Array unique tyInit) ty tyPos
-    checkTypes (getMeta initValue) innerTy tyInit
-    pure ExpTy{exp = Translate, ty = ty}
-  EAssign range lvalue exp -> do
+    void $ checkTypes (getMeta initValue) innerTy tyInit
+    pure ExpTy{exp = Translate, ty}
+  EAssign range lvalue@(LValue _ (Id idRange idName) accessorChain) exp -> do
+    when (V.null accessorChain) do
+      entry <- varSymbol idName idRange
+      case entry of
+        VarEntry Can'tAssign _ -> assignedToForVar idName range
+        VarEntry CanAssign _ -> pure ()
+        FunEntry _ _ -> pure ()
     ExpTy{ty = tyLValue} <- transVar lvalue
     ExpTy{ty = tyExp} <- transExp exp
-    checkTypes range tyLValue tyExp
+    void $ checkTypes range tyLValue tyExp
     pure ExpTy{exp = Translate, ty = Unit}
   EIfThenElse range cond then' else' -> do
     ExpTy{ty = tyCond} <- transExp cond
-    checkTypes (getMeta cond) Int tyCond
+    void $ checkTypes (getMeta cond) Int tyCond
     ExpTy{ty = tyThen'} <- transExp then'
     ExpTy{ty = tyElse'} <- transExp else'
-    checkTypes range tyThen' tyElse'
-    pure ExpTy{exp = Translate, ty = tyThen'}
+    ty <- checkTypes range tyThen' tyElse'
+    pure ExpTy{exp = Translate, ty}
   EIfThen _ cond then' -> do
     ExpTy{ty = tyCond} <- transExp cond
-    checkTypes (getMeta cond) Int tyCond
+    void $ checkTypes (getMeta cond) Int tyCond
     ExpTy{ty = tyThen'} <- transExp then'
-    checkTypes (getMeta then') Unit tyThen'
+    void $ checkTypes (getMeta then') Unit tyThen'
     pure ExpTy{exp = Translate, ty = Unit}
   EWhile _ cond body -> do
     ExpTy{ty = tyCond} <- transExp cond
-    checkTypes (getMeta cond) Int tyCond
-    ExpTy{ty = tyBody} <- transExp body
-    checkTypes (getMeta body) Unit tyBody
+    void $ checkTypes (getMeta cond) Int tyCond
+    ExpTy{ty = tyBody} <- local (\r -> r{inLoop = True}) $ transExp body
+    void $ checkTypes (getMeta body) Unit tyBody
     pure ExpTy{exp = Translate, ty = Unit}
   EFor _ (Id _ idName) lower upper body -> do
     ExpTy{ty = tyLower} <- transExp lower
-    checkTypes (getMeta lower) Int tyLower
+    void $ checkTypes (getMeta lower) Int tyLower
     ExpTy{ty = tyUpper} <- transExp upper
-    checkTypes (getMeta upper) Int tyUpper
+    void $ checkTypes (getMeta upper) Int tyUpper
 
     sym <- symbol idName
-    ExpTy{ty = tyBody} <- local (\env -> env{venv = enter sym (VarEntry Int) (venv env)}) $
-      -- TODO: make id immutable
-      transExp body
-    checkTypes (getMeta body) Unit tyBody
+    let
+      enterFor r = let env = tcEnv r in r
+        { tcEnv = env{venv = enter sym (VarEntry Can'tAssign Int) (venv env)}
+        , inLoop = True
+        }
+    ExpTy{ty = tyBody} <- local enterFor $ transExp body
+    void $ checkTypes (getMeta body) Unit tyBody
 
     pure ExpTy{exp = Translate, ty = Unit}
-  EBreak _ -> do
-    -- TODO: check if in for or while body
+  EBreak pos -> do
+    TcReader{inLoop} <- ask
+    unless inLoop $ illegalBreak pos
     pure ExpTy{exp = Translate, ty = Unit}
   ELet _ decs exps -> do
-    let
-      accumEnv env dec = do
-        env' <- local (<> env) $ transDec dec
-        -- Left: new state, which is the old env plus the new env
-        -- Right: newly-seen env
-        pure (env' <> env, env')
-    initEnv <- ask
-    envs <- mapAccumLM accumEnv initEnv decs
-    -- As per the Tiger specification, we want newer bindings to override older
-    -- ones. Thus, we want the old environment to the left, as `<>` is right-biased
-    -- for environments.
-    tys <- local (<> fold envs) $ traverse transExp exps
+    env <- transDecs decs
+    tys <- withEnv (const env) $ traverse transExp exps
     pure $ maybe ExpTy{exp = Translate, ty = Unit} snd $ V.unsnoc tys
   EPar _ exp -> transExp exp
 
@@ -341,22 +378,72 @@ transSeq = \case
     _ <- transExp exp
     transExp exp'
 
+transDecs :: Vector (Dec Range) -> Tc TcEnv
+transDecs decs = withAccumTyEnvs (V.groupBy isDecGroup decs) transDecsGroup
+  where
+    isDecGroup :: Dec Range -> Dec Range -> Bool
+    isDecGroup TyDec{}  TyDec{}  = True
+    isDecGroup FunDec{} FunDec{} = True
+    isDecGroup _        _        = False
+
+withAccumTyEnvs :: Traversable t => t a -> (a -> Tc TcEnv) -> Tc TcEnv
+withAccumTyEnvs input action = do
+  initEnv <- asks tcEnv
+  fold <$> mapAccumLM accumEnvs initEnv input
+  where
+    accumEnvs env input' = do
+      env' <- withEnv (<> env) $ action input'
+      let env'' = env' <> env
+      -- accum and state
+      pure (env'', env'')
+
+-- No two functions or types in the same group of mutually recursive things may
+-- have the same name.
+-- Cycles are not allowed within mutually recursive types.
+transDecsGroup :: Vector (Dec Range) -> Tc TcEnv
+transDecsGroup decs = do
+  env <- asks tcEnv
+  -- Put all the headers in the environment.
+  env' <- withAccumTyEnvs decs \case
+    TyDec _ (TypeId _ name) _ -> do
+      sym <- symbol name
+      header <- ioToTc $ Ty.Name sym <$> newIORef Nothing
+      pure env{tenv = enter sym header (tenv env)}
+    VarDec{} -> pure env
+    FunDec _ (Id _ name) params resultM _ -> do
+      sym <- symbol name
+      retTy <- maybe (pure Unit) (\(TypeId resultRange result) -> typeSymbol result resultRange) resultM
+      paramTys <- for params \(TypeField _ _ (TypeId tyRange ty)) -> typeSymbol ty tyRange
+      pure env{venv = enter sym (FunEntry paramTys retTy) (venv env)}
+
+  -- Find the types for each thing.
+  fold <$> withEnv (<> env') (traverse transDec decs)
+
 transDec :: Dec Range -> Tc TcEnv
 transDec = \case
-  TyDec _pos (TypeId _ name) ty -> do
-    -- TODO: recursive types
-    env <- ask
+  TyDec _pos (TypeId namePos name) ty -> do
+    env <- asks tcEnv
     ty' <- transTy ty
+    typeSymbol name namePos >>= \case
+      Ty.Name _ tyRef -> ioToTc $ writeIORef tyRef $ Just ty'
+      _ -> panic $ "Non-`Name` seen in `transDec` at " <> show namePos
+
     sym <- symbol name
     pure env{tenv = enter sym ty' (tenv env)}
-  VarDec _pos (Id _ idName) body -> do
-    env <- ask
+  VarDec _pos (Id _ idName) tyIdM body -> do
+    env <- asks tcEnv
     ExpTy{ty = tyBody} <- transExp body
+    ty <- case tyIdM of
+      Nothing -> case tyBody of
+        Nil -> illegalNil (getMeta body)
+        _ -> pure tyBody
+      Just (TypeId tyPos tyName) -> do
+        tyVar <- typeSymbol tyName tyPos
+        checkTypes tyPos tyVar tyBody
     sym <- symbol idName
-    pure env{venv = enter sym (VarEntry tyBody) (venv env)}
+    pure env{venv = enter sym (VarEntry CanAssign ty) (venv env)}
   FunDec _pos (Id _ name) params resultM body -> do
-    -- TODO: recursive functions
-    env <- ask
+    env <- asks tcEnv
 
     -- Check the result of the function body
     (resultPos, resultTy) <- case resultM of
@@ -370,11 +457,11 @@ transDec = \case
     nameSym <- symbol name
     let
       venv' = enter nameSym (FunEntry (snd <$> params') resultTy) (venv env)
-      enterParam offset ty = enter offset (VarEntry ty)
+      enterParam offset ty = enter offset (VarEntry CanAssign ty)
       venv'' = V.foldl' (flip (uncurry enterParam)) venv' params'
     -- Typecheck the body with new params
-    ExpTy{ty = tyBody} <- local (const env{venv = venv''}) (transExp body)
-    checkTypes resultPos resultTy tyBody
+    ExpTy{ty = tyBody} <- withEnv (const env{venv = venv''}) (transExp body)
+    void $ checkTypes resultPos resultTy tyBody
     -- Do not return the new parameters, only the function type
     pure env{venv = venv'}
 

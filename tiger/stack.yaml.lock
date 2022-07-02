@@ -3,7 +3,33 @@
 # For more information, please see the documentation at:
 #   https://docs.haskellstack.org/en/stable/lock_files
 
-packages: []
+packages:
+- completed:
+    subdir: vector
+    name: vector
+    version: 0.13.0.1
+    git: https://github.com/haskell/vector.git
+    pantry-tree:
+      size: 4150
+      sha256: 098ef99cd53d6e8d08d48fd8a167325f84abf8a086035385ba0c97d467760f36
+    commit: 2ec9d87c7c44fbf5a99e57c405c272d7138c693f
+  original:
+    subdir: vector
+    git: https://github.com/haskell/vector.git
+    commit: 2ec9d87c7c44fbf5a99e57c405c272d7138c693f
+- completed:
+    subdir: vector-stream
+    name: vector-stream
+    version: 0.1.0.0
+    git: https://github.com/haskell/vector.git
+    pantry-tree:
+      size: 325
+      sha256: 55e96909285cc8da6d320f57aba53dd398eb331397e51b122ae066d493b91306
+    commit: 2ec9d87c7c44fbf5a99e57c405c272d7138c693f
+  original:
+    subdir: vector-stream
+    git: https://github.com/haskell/vector.git
+    commit: 2ec9d87c7c44fbf5a99e57c405c272d7138c693f
 snapshots:
 - completed:
     size: 617368

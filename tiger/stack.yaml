@@ -4,4 +4,11 @@ resolver:
 packages:
 - .
 
-extra-deps: []
+extra-deps:
+# Fetch vector from GitHub because we want `groupBy`
+- git: https://github.com/haskell/vector.git
+  commit: 2ec9d87c7c44fbf5a99e57c405c272d7138c693f
+  subdirs:
+  - vector
+  - vector-stream
+
