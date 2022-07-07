@@ -10,7 +10,7 @@ import Control.Monad.Reader (MonadReader, ReaderT, ask, asks, local)
 import Control.Monad.State (MonadState, StateT, execStateT, get, put)
 import Control.Monad.Trans (lift)
 import Data.Bool (bool)
-import Data.Foldable (fold, for_)
+import Data.Foldable (fold, for_, traverse_)
 import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HashMap
 import Data.IntMap.Strict (IntMap)
@@ -18,6 +18,8 @@ import Data.IntMap.Strict qualified as IntMap
 import Data.IORef (newIORef, readIORef, writeIORef)
 import Data.List.NonEmpty (NonEmpty (..), (<|))
 import Data.List.NonEmpty qualified as NE
+import Data.Maybe (mapMaybe)
+import Data.Semigroup (Arg (..))
 import Data.Traversable (for)
 import Data.Unique (newUnique)
 import Data.Vector (Vector)
@@ -30,13 +32,13 @@ import Language.Tiger.AST
   )
 import Language.Tiger.Position (Range (..), (<->))
 import Language.Tiger.Semantic.Error
-  ( arityMismatch, assignedToForVar, fieldMismatch, illegalBreak, illegalNil
-  , inequalityUnsupportedTypes, notAFunction, panic, typeMismatch, undefinedSymbol
-  , unknownField, unsupportedFirstClassFunction
+  ( arityMismatch, assignedToForVar, cyclicTypeAliases, duplicatedNames, fieldMismatch
+  , illegalBreak, illegalNil, inequalityUnsupportedTypes, notAFunction, panic, typeMismatch
+  , undefinedSymbol, unknownField, unsupportedFirstClassFunction
   )
 import Language.Tiger.Semantic.Types (Symbol (..), Type (..))
 import Language.Tiger.Semantic.Types qualified as Ty
-import Language.Tiger.Util (mapAccumLM)
+import Language.Tiger.Util (findCycles, findDuplicatesOn, mapAccumLM)
 
 -- * Symbols
 
@@ -397,11 +399,38 @@ withAccumTyEnvs input action = do
       -- accum and state
       pure (env'', env'')
 
--- No two functions or types in the same group of mutually recursive things may
--- have the same name.
--- Cycles are not allowed within mutually recursive types.
+-- | Checks that a group of declarations do not contain duplicated names, and
+-- that a group of types do not contain cycles in type aliases.
+validateDecsGroup :: Vector (Dec Range) -> Tc ()
+validateDecsGroup (V.toList -> xs) = reportDuplicates *> reportTypeCycles
+  where
+    reportDuplicates, reportTypeCycles :: Tc ()
+    reportDuplicates =
+      traverse_ duplicatedNames $ NE.nonEmpty $ findDuplicatesOn extractName getMeta xs
+    reportTypeCycles =
+      traverse_ (cyclicTypeAliases . fmap (fmap (\(Arg tyId tyR) -> (tyId, tyR))))
+      $ NE.nonEmpty $ findCycles $ extractTyEdges xs
+
+    extractName :: Dec Range -> Name
+    extractName = \case
+      TyDec _ (TypeId _ name) _ -> name
+      VarDec _ (Id _ name) _ _ -> name
+      FunDec _ (Id _ name) _ _ _ -> name
+
+    extractTyEdge :: Dec Range -> Maybe (Arg Name Range, Arg Name Range)
+    extractTyEdge = \case
+      TyDec _ (TypeId tyR tyId) (TyId _ (TypeId tyR' tyId')) -> Just (Arg tyId tyR, Arg tyId' tyR')
+      TyDec{} -> Nothing
+      VarDec{} -> Nothing
+      FunDec{} -> Nothing
+
+    extractTyEdges :: [Dec Range] -> [(Arg Name Range, Arg Name Range)]
+    extractTyEdges = mapMaybe extractTyEdge
+
 transDecsGroup :: Vector (Dec Range) -> Tc TcEnv
 transDecsGroup decs = do
+  validateDecsGroup decs
+
   env <- asks tcEnv
   -- Put all the headers in the environment.
   env' <- withAccumTyEnvs decs \case

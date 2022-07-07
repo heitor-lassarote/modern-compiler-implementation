@@ -24,7 +24,7 @@ import Data.Vector (Vector)
 
 newtype Name
   = Name Text
-  deriving stock (Eq, Show)
+  deriving stock (Eq, Ord, Show)
   deriving newtype (Hashable, IsString)
 
 data Id a

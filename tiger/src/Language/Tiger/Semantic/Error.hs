@@ -1,6 +1,8 @@
 module Language.Tiger.Semantic.Error
   ( ArityMismatch (..)
   , AssignedToForVar (..)
+  , CyclicTypeAliases (..)
+  , DuplicatedNames (..)
   , FieldMismatch (..)
   , IllegalBreak (..)
   , IllegalNil (..)
@@ -12,6 +14,8 @@ module Language.Tiger.Semantic.Error
   , UnsupportedFirstClassFunction (..)
   , arityMismatch
   , assignedToForVar
+  , cyclicTypeAliases
+  , duplicatedNames
   , fieldMismatch
   , illegalBreak
   , illegalNil
@@ -26,6 +30,8 @@ module Language.Tiger.Semantic.Error
   ) where
 
 import Control.Exception (Exception (..), throw)
+import Data.List.NonEmpty (NonEmpty, intersperse)
+import Data.Semigroup (sconcat)
 import GHC.Stack (HasCallStack)
 
 import Language.Tiger.AST (BinOp, Name)
@@ -53,6 +59,32 @@ instance Exception AssignedToForVar where
   displayException (AssignedToForVar name range) =
     displayError range "Attempt to assign to non-assignable variable bound in for"
     <> show name <> " can't be assigned to, it was bound by a for loop."
+
+newtype CyclicTypeAliases = CyclicTypeAliases (NonEmpty (NonEmpty (Name, Range)))
+  deriving stock (Eq, Show)
+
+instance Exception CyclicTypeAliases where
+  displayException (CyclicTypeAliases cycles) =
+    "Cyclic types aliases in recursive group:\n"
+    <> sconcat (display <$> cycles)
+    where
+      display :: NonEmpty (Name, Range) -> String
+      display cycle' =
+        "The follow type aliases form a cycle:\n"
+        <> sconcat (intersperse " -> " $ (\(n, r) -> show n <> "(at " <> show r <> ")") <$> cycle') <> "."
+
+newtype DuplicatedNames = DuplicatedNames (NonEmpty (Name, NonEmpty Range))
+  deriving stock (Eq, Show)
+
+instance Exception DuplicatedNames where
+  displayException (DuplicatedNames duplicates) =
+    "Duplicated names in mutually recursive group:\n"
+    <> sconcat (uncurry display <$> duplicates)
+    where
+      display :: Name -> NonEmpty Range -> String
+      display name ranges =
+        "The name " <> show name <> " is duplicated at the following locations:\n"
+        <> sconcat (intersperse " and\n" $ show <$> ranges) <> "."
 
 data FieldMismatch = FieldMismatch (Symbol, Type) (Symbol, Type) Range
   deriving stock (Eq, Show)
@@ -131,6 +163,12 @@ arityMismatch name expected actual range = throw $ ArityMismatch name expected a
 
 assignedToForVar :: Name -> Range -> a
 assignedToForVar name range = throw $ AssignedToForVar name range
+
+cyclicTypeAliases :: NonEmpty (NonEmpty (Name, Range)) -> a
+cyclicTypeAliases cycles = throw $ CyclicTypeAliases cycles
+
+duplicatedNames :: NonEmpty (Name, NonEmpty Range) -> a
+duplicatedNames duplicates = throw $ DuplicatedNames duplicates
 
 fieldMismatch :: (Symbol, Type) -> (Symbol, Type) -> Range -> a
 fieldMismatch expected actual range = throw $ FieldMismatch expected actual range
